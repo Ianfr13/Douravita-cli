@@ -1,0 +1,2 @@
+[console_scripts]
+cli-anything-infisical = cli_anything.infisical.infisical_cli:main

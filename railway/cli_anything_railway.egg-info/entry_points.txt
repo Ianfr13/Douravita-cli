@@ -1,0 +1,2 @@
+[console_scripts]
+cli-anything-railway = cli_anything.railway.railway_cli:main
