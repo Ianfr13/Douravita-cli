@@ -13,12 +13,15 @@ def general_report(api_key: str, base_url: str,
                    filters: str | None = None) -> dict:
     """Get a general performance report.
 
+    Note: Uses /report endpoint — endpoint needs validation against live API.
+
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
         date_from: Start date (YYYY-MM-DD).
         date_to: End date (YYYY-MM-DD).
-        group_by: Grouping field (e.g., 'campaign', 'offer', 'country').
+        group_by: Grouping field. Valid values: 'campaign', 'offer', 'lander',
+                  'source', 'network', 'country', 'device', 'os', 'browser'.
         filters: JSON string or filter expression.
 
     Returns:
@@ -57,6 +60,31 @@ def campaigns_report(api_key: str, base_url: str,
         params["date_to"] = date_to
     return api_get("/report", params=params,
                    api_key=api_key, base_url=base_url)
+
+
+def stream_report(api_key: str, base_url: str,
+                  date_from: str | None = None,
+                  date_to: str | None = None) -> dict:
+    """Get stream-level performance report.
+
+    Note: Uses /report endpoint with group_by=stream (RedTrack 2026 release notes).
+    Endpoint needs validation against live API.
+
+    Args:
+        api_key: RedTrack API key.
+        base_url: API base URL.
+        date_from: Start date (YYYY-MM-DD).
+        date_to: End date (YYYY-MM-DD).
+
+    Returns:
+        Stream report data dict.
+    """
+    params: dict = {"group_by": "stream"}
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+    return api_get("/report", params=params, api_key=api_key, base_url=base_url)
 
 
 def click_logs(api_key: str, base_url: str,
