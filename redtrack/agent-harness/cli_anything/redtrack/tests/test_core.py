@@ -687,12 +687,12 @@ class TestOfferCommands:
         result = runner.invoke(cli, ["offer", "update", "5", "--name", "Updated Offer"])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.core.offers.api_delete")
+    @patch("cli_anything.redtrack.core.offers.api_patch")
     def test_offer_delete(self, mock_api, runner):
-        mock_api.return_value = {"status": "ok"}
-        result = runner.invoke(cli, ["offer", "delete", "5"])
+        mock_api.return_value = {"updated": 1}
+        result = runner.invoke(cli, ["offer", "delete", "5", "--confirm"])
         assert result.exit_code == 0
-        assert "deleted" in result.output
+        assert "archived" in result.output
 
 
 # ── CLI: Offer source commands with mocked API ────────────────────

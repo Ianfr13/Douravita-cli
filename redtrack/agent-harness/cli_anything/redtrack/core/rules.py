@@ -11,6 +11,9 @@ from cli_anything.redtrack.utils.redtrack_backend import (
 def list_rules(api_key: str, base_url: str) -> dict:
     """List all automation rules.
 
+    Note: GET /rules — endpoint requires validation (not confirmed in Swagger).
+    RedTrack help docs confirm automation rules exist as a feature.
+
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
@@ -23,6 +26,8 @@ def list_rules(api_key: str, base_url: str) -> dict:
 
 def get_rule(api_key: str, base_url: str, rule_id: str) -> dict:
     """Get a single automation rule by ID.
+
+    Note: GET /rules/{id} — endpoint requires validation (not confirmed in Swagger).
 
     Args:
         api_key: RedTrack API key.
@@ -39,6 +44,8 @@ def create_rule(api_key: str, base_url: str, name: str,
                 condition: str | None = None,
                 action: str | None = None) -> dict:
     """Create a new automation rule.
+
+    Note: POST /rules — endpoint requires validation (not confirmed in Swagger).
 
     Args:
         api_key: RedTrack API key.
@@ -64,6 +71,8 @@ def update_rule(api_key: str, base_url: str, rule_id: str,
                 condition: str | None = None,
                 action: str | None = None) -> dict:
     """Update an existing automation rule.
+
+    Note: PATCH /rules/{id} — endpoint requires validation (not confirmed in Swagger).
 
     Args:
         api_key: RedTrack API key.
@@ -92,6 +101,8 @@ def update_rule(api_key: str, base_url: str, rule_id: str,
 
 def delete_rule(api_key: str, base_url: str, rule_id: str) -> dict:
     """Delete an automation rule.
+
+    Note: DELETE /rules/{id} — endpoint requires validation (not confirmed in Swagger).
 
     Args:
         api_key: RedTrack API key.
