@@ -11,6 +11,9 @@ def list_costs(api_key: str, base_url: str,
                date_to: str | None = None) -> dict:
     """List cost records.
 
+    Note: GET /costs — endpoint requires validation (not confirmed in Swagger).
+    RedTrack help docs confirm cost tracking exists.
+
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
@@ -32,6 +35,9 @@ def update_cost(api_key: str, base_url: str, campaign_id: str,
                 cost: float, date: str | None = None) -> dict:
     """Manually update cost for a campaign.
 
+    Note: POST /costs — endpoint requires validation (not confirmed in Swagger).
+    RedTrack help docs confirm cost tracking exists.
+
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
@@ -50,6 +56,10 @@ def update_cost(api_key: str, base_url: str, campaign_id: str,
 
 def get_auto_cost_status(api_key: str, base_url: str) -> dict:
     """Get auto-update cost status information.
+
+    Note: GET /costs/auto — endpoint requires validation; this sub-path is the
+    most uncertain and is not confirmed in Swagger or public API docs.
+    RedTrack help docs suggest automatic cost sync exists as a feature.
 
     Retrieves information about automatic cost synchronization settings.
 

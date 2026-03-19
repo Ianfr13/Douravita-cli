@@ -161,14 +161,14 @@ def campaign():
 @campaign.command("list")
 @click.option("--date-from", default=None, help="Start date (YYYY-MM-DD)")
 @click.option("--date-to", default=None, help="End date (YYYY-MM-DD)")
-@click.option("--limit", type=int, default=100, help="Max results (default: 100)")
-@click.option("--offset", type=int, default=0, help="Pagination offset (default: 0)")
+@click.option("--page", type=int, default=1, help="Page number (default: 1)")
+@click.option("--per", type=int, default=100, help="Results per page (default: 100)")
 @handle_error
-def campaign_list(date_from, date_to, limit, offset):
+def campaign_list(date_from, date_to, page, per):
     """List all campaigns."""
     result = campaigns_mod.list_campaigns(
         _get_key(), _base_url,
-        date_from=date_from, date_to=date_to, limit=limit, offset=offset
+        date_from=date_from, date_to=date_to, page=page, per=per
     )
     if _json_output:
         output(result)
@@ -239,6 +239,23 @@ def campaign_delete(campaign_id):
     """Archive/delete a campaign."""
     result = campaigns_mod.delete_campaign(_get_key(), _base_url, campaign_id)
     output(result, f"Campaign {campaign_id} deleted")
+
+
+@campaign.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the campaigns.")
+@handle_error
+def campaign_status_update(ids, status):
+    """Bulk update campaign statuses.
+
+    IDS: One or more campaign IDs to update.
+    """
+    result = campaigns_mod.update_campaign_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} campaign(s) to '{status}'")
 
 
 @campaign.command("links")
@@ -328,6 +345,23 @@ def offer_delete(offer_id):
     """Delete an offer."""
     result = offers_mod.delete_offer(_get_key(), _base_url, offer_id)
     output(result, f"Offer {offer_id} deleted")
+
+
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
 
 
 # ── Offer Source Commands ─────────────────────────────────────────
@@ -686,6 +720,17 @@ def report_clicks(date_from, date_to, campaign_id):
     output(result, "Click Logs")
 
 
+@report.command("stream")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@handle_error
+def report_stream(date_from, date_to):
+    """Get stream-level performance report."""
+    result = reports_mod.stream_report(_get_key(), _base_url,
+                                       date_from=date_from, date_to=date_to)
+    output(result, "Stream Report")
+
+
 # ── Cost Commands ─────────────────────────────────────────────────
 @cli.group()
 def cost():
@@ -875,13 +920,13 @@ def repl():
 
     _repl_commands = {
         "account":      "info",
-        "campaign":     "list|get|create|update|delete|links",
-        "offer":        "list|get|create|update|delete",
+        "campaign":     "list|get|create|update|delete|status-update|links",
+        "offer":        "list|get|create|update|delete|status-update",
         "offer-source": "list|get|create|update|delete",
         "traffic":      "list|get|create|update|delete",
         "lander":       "list|get|create|update|delete",
         "conversion":   "list|upload|types",
-        "report":       "general|campaigns|clicks",
+        "report":       "general|campaigns|clicks|stream",
         "cost":         "list|update|auto",
         "rule":         "list|get|create|update|delete",
         "domain":       "list|add",
