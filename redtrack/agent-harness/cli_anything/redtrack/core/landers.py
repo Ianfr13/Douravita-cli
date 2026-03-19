@@ -4,7 +4,7 @@ Wraps the RedTrack /landers REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_put, api_delete
 )
 
 
@@ -85,8 +85,8 @@ def update_lander(api_key: str, base_url: str, lander_id: str,
         data["tracking_type"] = tracking_type
     if status is not None:
         data["status"] = status
-    return api_patch(f"/landings/{lander_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/landings/{lander_id}", data=data,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_lander(api_key: str, base_url: str, lander_id: str) -> dict:
