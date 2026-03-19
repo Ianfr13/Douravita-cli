@@ -507,6 +507,38 @@ def offer_export(ids, status, networks, countries):
     output(result, "Offer Export")
 
 
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
+
+
+@offer.command("export")
+@click.option("--ids", help="Comma-separated offer IDs to export.")
+@click.option("--status", help="Filter by status.")
+@click.option("--networks", help="Filter by network IDs.")
+@click.option("--countries", help="Filter by country codes.")
+@handle_error
+def offer_export(ids, status, networks, countries):
+    """Export offers to S3 via GET /offers/export."""
+    result = offers_mod.export_offers(
+        _get_key(), _base_url, ids=ids, status=status,
+        networks=networks, countries=countries
+    )
+    output(result, "Offer Export")
+
+
 # ── Offer Source Commands ─────────────────────────────────────────
 @cli.group("offer-source")
 def offer_source():
