@@ -44,10 +44,13 @@ _base_url = DEFAULT_BASE_URL
 def output(data, message: str = ""):
     """Output data in human-readable or JSON format depending on --json flag."""
     if _json_output:
-        click.echo(json.dumps(data, indent=2, default=str))
+        click.echo(json.dumps(data if data is not None else [], indent=2, default=str))
     else:
         if message:
             click.echo(message)
+        if data is None:
+            click.echo("(no data)")
+            return
         if isinstance(data, dict):
             _print_dict(data)
         elif isinstance(data, list):
@@ -68,6 +71,17 @@ def _print_dict(d: dict, indent: int = 0):
             _print_list(v, indent + 1)
         else:
             click.echo(f"{prefix}{k}: {v}")
+
+
+def _extract_list(data) -> list:
+    """Extract list from response — handles null, plain list, and paginated {items, total}."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "items" in data:
+        return data["items"]
+    return [data]
 
 
 def _print_list(items: list, indent: int = 0):
@@ -674,21 +688,18 @@ def conversion_list(date_from, date_to, campaign_id, status):
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No conversions found.")
-                return
-            click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
-            click.echo("─" * 60)
-            for c in items:
-                cid = str(c.get("id", ""))[:14]
-                click_id = str(c.get("click_id", ""))[:18]
-                st = str(c.get("status", ""))
-                payout = str(c.get("payout", ""))
-                click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No conversions found.")
+            return
+        click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
+        click.echo("─" * 60)
+        for c in items:
+            cid = str(c.get("id", ""))[:14]
+            click_id = str(c.get("click_id", ""))[:18]
+            st = str(c.get("status", ""))
+            payout = str(c.get("payout", ""))
+            click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
 
 
 @conversion.command("upload")
@@ -806,15 +817,19 @@ def cost():
 
 
 @cost.command("list")
-@click.option("--date-from", default=None, help="Start date (YYYY-MM-DD)")
-@click.option("--date-to", default=None, help="End date (YYYY-MM-DD)")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@click.option("--campaign-id", help="Filter by campaign ID.")
 @handle_error
-def cost_list(date_from, date_to):
-    """List cost records (via /report endpoint grouped by campaign)."""
+def cost_list(date_from, date_to, campaign_id):
+    """Get cost metrics via the report endpoint (grouped by campaign)."""
     result = costs_mod.get_cost_from_report(
-        _get_key(), _base_url, date_from=date_from, date_to=date_to
+        _get_key(), _base_url,
+        date_from=date_from,
+        date_to=date_to,
+        campaign_id=campaign_id,
     )
-    output(result, "Costs")
+    output(result, "Cost Report")
 
 
 # ── Rule Commands ─────────────────────────────────────────────────
@@ -908,19 +923,16 @@ def domain_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No custom domains found.")
-                return
-            click.echo(f"{'ID':<12} {'DOMAIN':<50}")
-            click.echo("─" * 64)
-            for d in items:
-                did = str(d.get("id", ""))
-                dname = str(d.get("domain", d.get("name", "")))[:48]
-                click.echo(f"{did:<12} {dname:<50}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No custom domains found.")
+            return
+        click.echo(f"{'ID':<12} {'DOMAIN':<50}")
+        click.echo("─" * 64)
+        for d in items:
+            did = str(d.get("id", ""))
+            dname = str(d.get("domain", d.get("name", "")))[:48]
+            click.echo(f"{did:<12} {dname:<50}")
 
 
 @domain.command("add")
@@ -1056,8 +1068,8 @@ def repl():
         "offer-source": "list|get|create|update|delete",
         "traffic":      "list|get|create|update|delete",
         "lander":       "list|get|create|update|delete",
-        "conversion":   "list|upload|types|export",
-        "report":       "general|campaigns|clicks|stream",
+        "conversion":   "list|upload|types",
+        "report":       "general|campaigns|clicks",
         "cost":         "list",
         "rule":         "list|get|create|update|delete",
         "domain":       "list|add|update|delete|ssl-renew",

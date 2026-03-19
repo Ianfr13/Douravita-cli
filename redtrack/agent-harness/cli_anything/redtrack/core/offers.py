@@ -112,44 +112,6 @@ def update_offer_statuses(api_key: str, base_url: str,
     return api_patch("/offers/status", data=data, api_key=api_key, base_url=base_url)
 
 
-def export_offers(api_key: str, base_url: str,
-                  ids: str | None = None,
-                  title: str | None = None,
-                  networks: str | None = None,
-                  countries: str | None = None,
-                  status: str | None = None,
-                  tags: str | None = None) -> dict:
-    """Export offers to S3 via GET /offers/export.
-
-    Args:
-        api_key: RedTrack API key.
-        base_url: API base URL.
-        ids: Comma-separated offer IDs to export (optional).
-        title: Filter by title (optional).
-        networks: Filter by network IDs (optional).
-        countries: Filter by country codes (optional).
-        status: Filter by status (optional).
-        tags: Filter by tags (optional).
-
-    Returns:
-        API response dict.
-    """
-    params: dict = {}
-    if ids:
-        params["ids"] = ids
-    if title:
-        params["title"] = title
-    if networks:
-        params["networks"] = networks
-    if countries:
-        params["countries"] = countries
-    if status:
-        params["status"] = status
-    if tags:
-        params["tags"] = tags
-    return api_get("/offers/export", params=params, api_key=api_key, base_url=base_url)
-
-
 def delete_offer(api_key: str, base_url: str, offer_id: str) -> dict:
     """Delete an offer.
 

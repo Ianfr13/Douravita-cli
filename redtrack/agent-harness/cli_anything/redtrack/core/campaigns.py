@@ -1,10 +1,13 @@
 """Campaign management for RedTrack.
 
 Wraps the RedTrack /campaigns REST API endpoints.
+
+Note: There is no DELETE /campaigns/{id} endpoint in the RedTrack API.
+To remove a campaign, use update_campaign_statuses(..., status="archived").
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_put, api_delete
+    api_get, api_post, api_patch, api_put
 )
 
 
@@ -125,30 +128,6 @@ def update_campaign_statuses(api_key: str, base_url: str,
     return api_patch("/campaigns/status", data=data, api_key=api_key, base_url=base_url)
 
 
-def list_campaigns_v2(api_key: str, base_url: str, date_from: str | None = None,
-                      date_to: str | None = None, page: int = 1,
-                      per: int = 100) -> dict:
-    """List campaigns via the lighter v2 endpoint (no total_stat).
-
-    Args:
-        api_key: RedTrack API key.
-        base_url: API base URL.
-        date_from: Start date filter (YYYY-MM-DD).
-        date_to: End date filter (YYYY-MM-DD).
-        page: Page number (1-based).
-        per: Number of results per page.
-
-    Returns:
-        API response with campaigns list.
-    """
-    params: dict = {"page": page, "per": per}
-    if date_from:
-        params["date_from"] = date_from
-    if date_to:
-        params["date_to"] = date_to
-    return api_get("/campaigns/v2", params=params, api_key=api_key, base_url=base_url)
-
-
 def get_campaign_links(api_key: str, base_url: str, campaign_id: str) -> dict:
     """Get tracking links for a campaign.
 
@@ -172,3 +151,30 @@ def get_campaign_links(api_key: str, base_url: str, campaign_id: str) -> dict:
     if not links:
         links["campaign"] = campaign
     return links
+
+
+def list_campaigns_v2(api_key: str, base_url: str, date_from: str | None = None,
+                       date_to: str | None = None, page: int = 1,
+                       per: int = 100) -> dict:
+    """List campaigns using the v2 endpoint.
+
+    The v2 endpoint returns the same structure as /campaigns but without
+    the total_stat field, making it lighter for large datasets.
+
+    Args:
+        api_key: RedTrack API key.
+        base_url: API base URL.
+        date_from: Start date filter (YYYY-MM-DD).
+        date_to: End date filter (YYYY-MM-DD).
+        page: Page number (default 1).
+        per: Results per page (default 100).
+
+    Returns:
+        API response with campaigns list.
+    """
+    params: dict = {"page": page, "per": per}
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+    return api_get("/campaigns/v2", params=params, api_key=api_key, base_url=base_url)

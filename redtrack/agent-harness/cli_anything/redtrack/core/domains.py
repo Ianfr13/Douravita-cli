@@ -1,6 +1,8 @@
-"""Custom domain management for RedTrack.
+"""Domain management for RedTrack.
 
 Wraps the RedTrack /domains REST API endpoints.
+Confirmed working endpoints: GET, POST, PUT /{id}, DELETE /{id},
+POST /regenerated_free_ssl/{id}.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
@@ -11,17 +13,17 @@ from cli_anything.redtrack.utils.redtrack_backend import (
 def list_domains(api_key: str, base_url: str,
                  domain_type: str | None = None,
                  page: int = 1, per: int = 100) -> dict:
-    """List custom tracking domains.
+    """List all custom tracking domains.
 
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
         domain_type: Filter by domain type (optional).
-        page: Page number (1-based).
+        page: Page number.
         per: Results per page.
 
     Returns:
-        API response with domains list.
+        Paginated response dict with {"items": [...], "total": N}.
     """
     params: dict = {"page": page, "per": per}
     if domain_type:
@@ -31,13 +33,13 @@ def list_domains(api_key: str, base_url: str,
 
 def add_domain(api_key: str, base_url: str, domain: str,
                domain_type: str | None = None) -> dict:
-    """Add a custom tracking domain.
+    """Add a new custom tracking domain.
 
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
-        domain: Domain name to add.
-        domain_type: Type of domain (optional).
+        domain: The domain name (e.g., 'track.example.com').
+        domain_type: Domain type (optional).
 
     Returns:
         Created domain data dict.
@@ -51,7 +53,7 @@ def add_domain(api_key: str, base_url: str, domain: str,
 def update_domain(api_key: str, base_url: str, domain_id: str,
                   domain: str | None = None,
                   domain_type: str | None = None) -> dict:
-    """Update a custom tracking domain.
+    """Update an existing custom domain.
 
     Args:
         api_key: RedTrack API key.
@@ -72,7 +74,7 @@ def update_domain(api_key: str, base_url: str, domain_id: str,
 
 
 def delete_domain(api_key: str, base_url: str, domain_id: str) -> dict:
-    """Delete a custom tracking domain.
+    """Delete a custom domain.
 
     Args:
         api_key: RedTrack API key.
@@ -82,10 +84,7 @@ def delete_domain(api_key: str, base_url: str, domain_id: str) -> dict:
     Returns:
         Status dict.
     """
-    result = api_delete(f"/domains/{domain_id}", api_key=api_key, base_url=base_url)
-    if result is None:
-        return {"status": "ok"}
-    return result
+    return api_delete(f"/domains/{domain_id}", api_key=api_key, base_url=base_url)
 
 
 def regenerate_ssl(api_key: str, base_url: str, domain_id: str) -> dict:
@@ -99,5 +98,5 @@ def regenerate_ssl(api_key: str, base_url: str, domain_id: str) -> dict:
     Returns:
         API response dict.
     """
-    return api_post(f"/domains/regenerated_free_ssl/{domain_id}", data={},
-                    api_key=api_key, base_url=base_url)
+    return api_post(f"/domains/regenerated_free_ssl/{domain_id}",
+                    data=None, api_key=api_key, base_url=base_url)
