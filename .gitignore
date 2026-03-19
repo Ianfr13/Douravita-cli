@@ -41,6 +41,7 @@
 !/adguardhome/
 !/ollama/
 !/google-tag-manager/
+!/redtrack/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
@@ -75,6 +76,8 @@
 /ollama/.*
 /google-tag-manager/*
 /google-tag-manager/.*
+/redtrack/*
+/redtrack/.*
 
 # Step 6: ...except agent-harness/
 !/gimp/agent-harness/
@@ -93,6 +96,7 @@
 !/adguardhome/agent-harness/
 !/ollama/agent-harness/
 !/google-tag-manager/agent-harness/
+!/redtrack/agent-harness/
 
 # Step 7: Ignore build artifacts within allowed dirs
 **/__pycache__/
