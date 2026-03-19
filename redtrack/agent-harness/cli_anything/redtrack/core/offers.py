@@ -4,7 +4,7 @@ Wraps the RedTrack /offers and /networks REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_patch, api_put, api_delete
 )
 
 
@@ -39,7 +39,7 @@ def get_offer(api_key: str, base_url: str, offer_id: str) -> dict:
 
 
 def create_offer(api_key: str, base_url: str, name: str,
-                 offer_source_id: str | None = None, url: str | None = None,
+                 network_id: str | None = None, url: str | None = None,
                  payout: float | None = None) -> dict:
     """Create a new offer.
 
@@ -47,7 +47,7 @@ def create_offer(api_key: str, base_url: str, name: str,
         api_key: RedTrack API key.
         base_url: API base URL.
         name: Offer name.
-        offer_source_id: ID of the affiliate network/offer source.
+        network_id: ID of the affiliate network (uses /networks endpoint).
         url: Offer destination URL.
         payout: Default payout value.
 
@@ -55,8 +55,8 @@ def create_offer(api_key: str, base_url: str, name: str,
         Created offer data dict.
     """
     data: dict = {"name": name}
-    if offer_source_id:
-        data["offer_source_id"] = offer_source_id
+    if network_id:
+        data["network_id"] = network_id
     if url:
         data["url"] = url
     if payout is not None:
@@ -91,12 +91,33 @@ def update_offer(api_key: str, base_url: str, offer_id: str,
         data["payout"] = payout
     if status is not None:
         data["status"] = status
-    return api_patch(f"/offers/{offer_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/offers/{offer_id}", data=data,
+                   api_key=api_key, base_url=base_url)
+
+
+def update_offer_statuses(api_key: str, base_url: str,
+                           ids: list[str], status: str) -> dict:
+    """Bulk update offer statuses via PATCH /offers/status.
+
+    Args:
+        api_key: RedTrack API key.
+        base_url: API base URL.
+        ids: List of offer IDs to update.
+        status: New status ('active', 'paused', 'archived').
+
+    Returns:
+        API response dict.
+    """
+    data = {"ids": ids, "status": status}
+    return api_patch("/offers/status", data=data, api_key=api_key, base_url=base_url)
 
 
 def delete_offer(api_key: str, base_url: str, offer_id: str) -> dict:
     """Delete an offer.
+
+    Note: The RedTrack Swagger does not confirm DELETE /offers/{id}. This
+    attempts a DELETE request first; if the API returns 404 or 405, consider
+    using update_offer_statuses() with status 'archived' as a fallback.
 
     Args:
         api_key: RedTrack API key.
@@ -194,8 +215,8 @@ def update_offer_source(api_key: str, base_url: str, source_id: str,
         data["click_id_param"] = click_id_param
     if payout_param is not None:
         data["payout_param"] = payout_param
-    return api_patch(f"/networks/{source_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/networks/{source_id}", data=data,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_offer_source(api_key: str, base_url: str, source_id: str) -> dict:
