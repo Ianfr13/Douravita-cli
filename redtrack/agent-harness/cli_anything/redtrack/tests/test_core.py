@@ -31,6 +31,18 @@ def set_api_key(monkeypatch):
     monkeypatch.setenv("REDTRACK_API_KEY", "test_api_key_1234")
 
 
+@pytest.fixture(autouse=True)
+def reset_cli_globals():
+    """Reset CLI module globals after each test to prevent state leakage."""
+    import cli_anything.redtrack.redtrack_cli as cli_mod
+    from cli_anything.redtrack.utils.redtrack_backend import DEFAULT_BASE_URL
+    yield
+    cli_mod._json_output = False
+    cli_mod._repl_mode = False
+    cli_mod._api_key = None
+    cli_mod._base_url = DEFAULT_BASE_URL
+
+
 # ── Backend: Constants ────────────────────────────────────────────
 
 class TestBackendConstants:
@@ -369,14 +381,14 @@ class TestIsAvailable:
         mock_get.return_value = mock_resp
         assert is_available(api_key="bad_key") is False
 
-    @patch("cli_anything.redtrack.utils.redtrack_backend.api_get")
+    @patch("cli_anything.redtrack.utils.redtrack_backend.requests.get")
     def test_is_available_hits_me_settings(self, mock_get):
-        mock_get.return_value = {"timezone": "UTC"}
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_get.return_value = mock_resp
         result = backend.is_available("key", "https://api.redtrack.io")
-        mock_get.assert_called_once_with(
-            "/me/settings", params={},
-            api_key="key", base_url="https://api.redtrack.io"
-        )
+        call_url = mock_get.call_args[0][0]
+        assert "/me/settings" in call_url
         assert result is True
 
 
@@ -486,7 +498,6 @@ class TestCLIParsing:
         result = runner.invoke(cli, ["cost", "--help"])
         assert result.exit_code == 0
         assert "list" in result.output
-        assert "update" in result.output
 
     def test_rule_help(self, runner):
         result = runner.invoke(cli, ["rule", "--help"])
@@ -600,12 +611,12 @@ class TestCampaignCommands:
         assert result.exit_code == 0
         assert "updated" in result.output
 
-    @patch("cli_anything.redtrack.core.campaigns.api_delete")
+    @patch("cli_anything.redtrack.core.campaigns.api_patch")
     def test_campaign_delete(self, mock_api, runner):
-        mock_api.return_value = {"status": "ok"}
-        result = runner.invoke(cli, ["campaign", "delete", "1"])
+        mock_api.return_value = {"updated": 1}
+        result = runner.invoke(cli, ["campaign", "delete", "1", "--confirm"])
         assert result.exit_code == 0
-        assert "deleted" in result.output
+        assert "archived" in result.output
 
     @patch("cli_anything.redtrack.core.campaigns.api_get")
     def test_campaign_links(self, mock_api, runner):
@@ -676,12 +687,12 @@ class TestOfferCommands:
         result = runner.invoke(cli, ["offer", "update", "5", "--name", "Updated Offer"])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.core.offers.api_delete")
+    @patch("cli_anything.redtrack.core.offers.api_patch")
     def test_offer_delete(self, mock_api, runner):
-        mock_api.return_value = {"status": "ok"}
-        result = runner.invoke(cli, ["offer", "delete", "5"])
+        mock_api.return_value = {"updated": 1}
+        result = runner.invoke(cli, ["offer", "delete", "5", "--confirm"])
         assert result.exit_code == 0
-        assert "deleted" in result.output
+        assert "archived" in result.output
 
 
 # ── CLI: Offer source commands with mocked API ────────────────────
@@ -895,28 +906,70 @@ class TestReportCommands:
 class TestCostCommands:
     @patch("cli_anything.redtrack.core.costs.api_get")
     def test_cost_list(self, mock_api, runner):
-        mock_api.return_value = {"data": []}
+        mock_api.return_value = []
         result = runner.invoke(cli, ["--json", "cost", "list"])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.core.costs.api_post")
-    def test_cost_update(self, mock_api, runner):
-        mock_api.return_value = {"status": "ok"}
+    @patch("cli_anything.redtrack.core.costs.api_get")
+    def test_cost_list_with_dates(self, mock_api, runner):
+        mock_api.return_value = []
         result = runner.invoke(cli, [
-            "cost", "update",
-            "--campaign-id", "1",
-            "--cost", "150.00"
+            "cost", "list",
+            "--date-from", "2024-01-01",
+            "--date-to", "2024-01-31",
+            "--campaign-id", "42"
         ])
         assert result.exit_code == 0
-        assert "updated" in result.output
+        call_params = mock_api.call_args[1]["params"]
+        assert call_params.get("group_by") == "campaign"
+        assert call_params.get("date_from") == "2024-01-01"
+        assert call_params.get("campaign_id") == "42"
 
-    @patch("cli_anything.redtrack.core.costs.api_get")
-    def test_cost_auto(self, mock_api, runner):
-        mock_api.return_value = {"enabled": True, "interval": "hourly"}
-        result = runner.invoke(cli, ["--json", "cost", "auto"])
-        assert result.exit_code == 0
-        data = json.loads(result.output)
-        assert "enabled" in data
+
+# ── Null response handling ─────────────────────────────────────────
+
+class TestNullResponseHandling:
+    def test_output_handles_none(self, runner):
+        """CLI should not crash when API returns null."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b"null"
+            mock_resp.json.return_value = None
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["campaign", "list"])
+            assert result.exit_code == 0
+
+    def test_output_handles_paginated_response(self, runner):
+        """CLI should handle {items: [], total: N} paginated responses."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"items": [], "total": 0}'
+            mock_resp.json.return_value = {"items": [], "total": 0}
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["--json", "conversion", "list",
+                                         "--date-from", "2024-01-01",
+                                         "--date-to", "2024-01-31"])
+            assert result.exit_code == 0
+
+
+# ── get_cost_from_report ───────────────────────────────────────────
+
+class TestGetCostFromReport:
+    def test_cost_from_report(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[]'
+            mock_resp.json.return_value = []
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.costs import get_cost_from_report
+            result = get_cost_from_report("key", "https://api.redtrack.io",
+                                           date_from="2024-01-01", date_to="2024-01-31")
+            call_url = mock_get.call_args[0][0]
+            assert "/report" in call_url
+            assert result == []
 
 
 # ── CLI: Rule commands ────────────────────────────────────────────
@@ -976,7 +1029,7 @@ class TestRuleCommands:
 # ── CLI: Domain commands ──────────────────────────────────────────
 
 class TestDomainCommands:
-    @patch("cli_anything.redtrack.redtrack_cli.api_get")
+    @patch("cli_anything.redtrack.core.domains.api_get")
     def test_domain_list_json(self, mock_api, runner):
         mock_api.return_value = [{"id": "1", "domain": "track.example.com"}]
         result = runner.invoke(cli, ["--json", "domain", "list"])
@@ -984,14 +1037,14 @@ class TestDomainCommands:
         data = json.loads(result.output)
         assert data[0]["domain"] == "track.example.com"
 
-    @patch("cli_anything.redtrack.redtrack_cli.api_get")
+    @patch("cli_anything.redtrack.core.domains.api_get")
     def test_domain_list_empty(self, mock_api, runner):
         mock_api.return_value = []
         result = runner.invoke(cli, ["domain", "list"])
         assert result.exit_code == 0
         assert "No custom domains" in result.output
 
-    @patch("cli_anything.redtrack.redtrack_cli.api_post")
+    @patch("cli_anything.redtrack.core.domains.api_post")
     def test_domain_add(self, mock_api, runner):
         mock_api.return_value = {"id": "2", "domain": "clicks.mysite.com"}
         result = runner.invoke(cli, [
@@ -999,7 +1052,7 @@ class TestDomainCommands:
         ])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.redtrack_cli.api_get")
+    @patch("cli_anything.redtrack.core.domains.api_get")
     def test_domain_list_human(self, mock_api, runner):
         mock_api.return_value = [{"id": "1", "domain": "track.example.com"}]
         result = runner.invoke(cli, ["domain", "list"])
@@ -1093,16 +1146,16 @@ class TestCoreCampaigns:
         args = mock_put.call_args
         assert "/campaigns/abc" in str(args)
 
-    @patch("cli_anything.redtrack.core.campaigns.api_put")
-    def test_update_campaign_statuses(self, mock_put):
-        mock_put.return_value = {"updated": 2}
+    @patch("cli_anything.redtrack.core.campaigns.api_patch")
+    def test_update_campaign_statuses(self, mock_patch):
+        mock_patch.return_value = {"updated": 2}
         result = campaigns.update_campaign_statuses(
             "key", "https://api.redtrack.io",
             ids=["id1", "id2"], status="paused"
         )
-        mock_put.assert_called_once_with(
+        mock_patch.assert_called_once_with(
             "/campaigns/status",
-            {"ids": ["id1", "id2"], "status": "paused"},
+            data={"ids": ["id1", "id2"], "status": "paused"},
             api_key="key", base_url="https://api.redtrack.io"
         )
 
@@ -1151,16 +1204,16 @@ class TestMissingApiKey:
 # ── Core module: offers ───────────────────────────────────────────
 
 class TestCoreOffers:
-    @patch("cli_anything.redtrack.core.offers.api_put")
-    def test_update_offer_statuses(self, mock_put):
-        mock_put.return_value = {"updated": 1}
+    @patch("cli_anything.redtrack.core.offers.api_patch")
+    def test_update_offer_statuses(self, mock_patch):
+        mock_patch.return_value = {"updated": 1}
         offers.update_offer_statuses(
             "key", "https://api.redtrack.io",
             ids=["o1"], status="active"
         )
-        mock_put.assert_called_once_with(
+        mock_patch.assert_called_once_with(
             "/offers/status",
-            {"ids": ["o1"], "status": "active"},
+            data={"ids": ["o1"], "status": "active"},
             api_key="key", base_url="https://api.redtrack.io"
         )
 
@@ -1170,7 +1223,7 @@ class TestCoreOffers:
         offers.create_offer("key", "https://api.redtrack.io",
                             name="Test", url="https://example.com",
                             network_id="net123")
-        payload = mock_post.call_args[0][1]
+        payload = mock_post.call_args[1]["data"]
         assert "network_id" in payload
         assert payload["network_id"] == "net123"
 
@@ -1184,3 +1237,162 @@ class TestCoreReports:
         reports.stream_report("key", "https://api.redtrack.io")
         call_params = mock_get.call_args[1]["params"]
         assert call_params.get("group_by") == "stream"
+
+
+# ── New feature tests ─────────────────────────────────────────────
+
+class TestCampaignListV2:
+    def test_list_campaigns_v2_calls_correct_endpoint(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[]'
+            mock_resp.json.return_value = []
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.campaigns import list_campaigns_v2
+            list_campaigns_v2("key", "https://api.redtrack.io")
+            url = mock_get.call_args[0][0]
+            assert "/campaigns/v2" in url
+
+
+class TestExportOffers:
+    def test_export_offers_calls_correct_endpoint(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{}'
+            mock_resp.json.return_value = {}
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.offers import export_offers
+            export_offers("key", "https://api.redtrack.io", status="active")
+            url = mock_get.call_args[0][0]
+            assert "/offers/export" in url
+
+
+class TestExportConversions:
+    def test_export_conversions_requires_dates(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{}'
+            mock_resp.json.return_value = {}
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.conversions import export_conversions
+            export_conversions("key", "https://api.redtrack.io",
+                               date_from="2024-01-01", date_to="2024-01-31")
+            url = mock_get.call_args[0][0]
+            assert "/conversions/export" in url
+            params = mock_get.call_args[1].get("params", {})
+            assert params.get("date_from") == "2024-01-01"
+
+
+class TestDomainsModule:
+    def test_list_domains(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"items":[],"total":0}'
+            mock_resp.json.return_value = {"items": [], "total": 0}
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.domains import list_domains
+            result = list_domains("key", "https://api.redtrack.io")
+            url = mock_get.call_args[0][0]
+            assert "/domains" in url
+            assert result == {"items": [], "total": 0}
+
+    def test_update_domain_uses_put(self):
+        with patch("requests.put") as mock_put:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"id":"d1"}'
+            mock_resp.json.return_value = {"id": "d1"}
+            mock_put.return_value = mock_resp
+            from cli_anything.redtrack.core.domains import update_domain
+            update_domain("key", "https://api.redtrack.io", "d1", domain="new.example.com")
+            url = mock_put.call_args[0][0]
+            assert "/domains/d1" in url
+
+    def test_delete_domain(self):
+        with patch("requests.delete") as mock_del:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 204
+            mock_resp.content = b""
+            mock_del.return_value = mock_resp
+            from cli_anything.redtrack.core.domains import delete_domain
+            result = delete_domain("key", "https://api.redtrack.io", "d1")
+            assert result == {"status": "ok"}
+
+    def test_regenerate_ssl(self):
+        with patch("requests.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"status":"ok"}'
+            mock_resp.json.return_value = {"status": "ok"}
+            mock_post.return_value = mock_resp
+            from cli_anything.redtrack.core.domains import regenerate_ssl
+            regenerate_ssl("key", "https://api.redtrack.io", "d1")
+            url = mock_post.call_args[0][0]
+            assert "/domains/regenerated_free_ssl/d1" in url
+
+
+class TestDictionaryModule:
+    def test_get_countries_no_auth(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[{"code":"US","name":"United States"}]'
+            mock_resp.json.return_value = [{"code": "US", "name": "United States"}]
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.dictionary import get_countries
+            result = get_countries()
+            url = mock_get.call_args[0][0]
+            assert "/countries" in url
+            # No api_key in call (no auth needed)
+            call_kwargs = str(mock_get.call_args)
+            assert "api_key" not in call_kwargs
+
+    def test_list_all_keys(self):
+        from cli_anything.redtrack.core.dictionary import list_all_keys
+        keys = list_all_keys()
+        assert "countries" in keys
+        assert "browsers" in keys
+        assert "os" in keys
+        assert len(keys) == 14
+
+
+class TestLookupCLI:
+    def test_lookup_list(self, runner):
+        result = runner.invoke(cli, ["--json", "lookup", "list"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "available_lookups" in data
+        assert len(data["available_lookups"]) == 14
+
+    def test_lookup_get_countries(self, runner):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[{"code":"US"}]'
+            mock_resp.json.return_value = [{"code": "US"}]
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["--json", "lookup", "get", "countries"])
+            assert result.exit_code == 0
+
+    def test_lookup_get_invalid_type(self, runner):
+        result = runner.invoke(cli, ["lookup", "get", "foobar"])
+        assert result.exit_code != 0
+
+
+class TestCampaignDeleteArchive:
+    def test_campaign_delete_uses_status_archived(self, runner):
+        with patch("requests.patch") as mock_patch:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"updated":1}'
+            mock_resp.json.return_value = {"updated": 1}
+            mock_patch.return_value = mock_resp
+            result = runner.invoke(cli, ["campaign", "delete", "123", "--confirm"])
+            assert result.exit_code == 0
+            _, kwargs = mock_patch.call_args
+            assert kwargs["json"]["status"] == "archived"
+            assert "123" in kwargs["json"]["ids"]
