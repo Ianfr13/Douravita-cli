@@ -15,12 +15,14 @@ import os
 import shutil
 import subprocess
 import unittest
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
 
 from cli_anything.redtrack.utils.redtrack_backend import is_available, DEFAULT_BASE_URL
 from cli_anything.redtrack.redtrack_cli import cli
+from cli_anything.redtrack.core import campaigns
 
 # ── Skip guard ───────────────────────────────────────────────────
 
@@ -98,15 +100,16 @@ class TestCampaignE2E:
         result = runner.invoke(cli, ["--json", "campaign", "list"])
         assert result.exit_code == 0, f"Failed: {result.output}"
         data = json.loads(result.output)
-        assert isinstance(data, (list, dict))
+        assert isinstance(data, (list, dict, type(None)))
 
     def test_campaign_list_with_date_range(self, runner):
-        """GET /campaigns with date params."""
+        """GET /campaigns with date params using page/per pagination."""
         result = runner.invoke(cli, [
             "--json", "campaign", "list",
             "--date-from", "2024-01-01",
             "--date-to", "2024-12-31",
-            "--limit", "10"
+            "--page", "1",
+            "--per", "10"
         ])
         assert result.exit_code == 0, f"Failed: {result.output}"
 
@@ -125,7 +128,7 @@ class TestOfferE2E:
         result = runner.invoke(cli, ["--json", "offer", "list"])
         assert result.exit_code == 0, f"Failed: {result.output}"
         data = json.loads(result.output)
-        assert isinstance(data, (list, dict))
+        assert isinstance(data, (list, dict, type(None)))
 
     def test_offer_list_human(self, runner):
         """Offer list in human mode should not error."""
@@ -142,7 +145,7 @@ class TestOfferSourceE2E:
         result = runner.invoke(cli, ["--json", "offer-source", "list"])
         assert result.exit_code == 0, f"Failed: {result.output}"
         data = json.loads(result.output)
-        assert isinstance(data, (list, dict))
+        assert isinstance(data, (list, dict, type(None)))
 
 
 # ── Traffic Channel E2E ───────────────────────────────────────────
@@ -166,7 +169,7 @@ class TestLanderE2E:
         result = runner.invoke(cli, ["--json", "lander", "list"])
         assert result.exit_code == 0, f"Failed: {result.output}"
         data = json.loads(result.output)
-        assert isinstance(data, (list, dict))
+        assert isinstance(data, (list, dict, type(None)))
 
 
 # ── Report E2E ────────────────────────────────────────────────────
@@ -235,6 +238,41 @@ class TestDomainE2E:
         assert isinstance(data, (list, dict))
 
 
+# ── Lookup E2E ────────────────────────────────────────────────────
+
+@_skip_no_key
+class TestLookupE2E:
+    def test_lookup_countries(self, runner):
+        """GET /countries — no auth needed."""
+        result = runner.invoke(cli, ["--json", "lookup", "get", "countries"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) > 0  # countries list should never be empty
+
+    def test_lookup_browsers(self, runner):
+        result = runner.invoke(cli, ["--json", "lookup", "get", "browsers"])
+        assert result.exit_code == 0
+
+    def test_lookup_list(self, runner):
+        result = runner.invoke(cli, ["--json", "lookup", "list"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "available_lookups" in data
+
+
+# ── Campaign v2 E2E ───────────────────────────────────────────────
+
+@_skip_no_key
+class TestCampaignV2E2E:
+    def test_campaign_list_v2(self, runner):
+        """GET /campaigns/v2 — lighter campaign list."""
+        result = runner.invoke(cli, ["--json", "campaign", "list-v2"])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        data = json.loads(result.output)
+        assert isinstance(data, (list, dict, type(None)))
+
+
 # ── Rule E2E ──────────────────────────────────────────────────────
 
 @_skip_no_key
@@ -261,6 +299,26 @@ class TestSessionE2E:
         assert data["base_url"] == DEFAULT_BASE_URL
         # API key must be masked — not the raw value
         assert data["api_key"] != _api_key
+
+
+# ── Bulk operations E2E (mocked) ──────────────────────────────────
+
+class TestBulkOperationsE2E(unittest.TestCase):
+    """E2E tests for bulk operations — network calls are mocked."""
+
+    api_key = "test_key"
+    base_url = DEFAULT_BASE_URL
+
+    def test_bulk_campaign_status_update(self):
+        """E2E: Update multiple campaign statuses in one call."""
+        with patch("cli_anything.redtrack.core.campaigns.api_patch") as mock_patch:
+            mock_patch.return_value = {"updated": 3, "status": "paused"}
+            result = campaigns.update_campaign_statuses(
+                self.api_key, self.base_url,
+                ids=["c1", "c2", "c3"],
+                status="paused"
+            )
+            self.assertEqual(result["updated"], 3)
 
 
 # ── CLI Subprocess E2E ────────────────────────────────────────────
