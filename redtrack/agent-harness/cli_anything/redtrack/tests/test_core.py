@@ -16,6 +16,8 @@ from click.testing import CliRunner
 from cli_anything.redtrack.redtrack_cli import cli
 from cli_anything.redtrack.utils.redtrack_backend import DEFAULT_BASE_URL
 from cli_anything.redtrack.core.session import get_session_info, _mask_key
+from cli_anything.redtrack.utils import redtrack_backend as backend
+from cli_anything.redtrack.core import campaigns, offers, reports
 
 
 @pytest.fixture
@@ -367,6 +369,33 @@ class TestIsAvailable:
         mock_get.return_value = mock_resp
         assert is_available(api_key="bad_key") is False
 
+    @patch("cli_anything.redtrack.utils.redtrack_backend.api_get")
+    def test_is_available_hits_me_settings(self, mock_get):
+        mock_get.return_value = {"timezone": "UTC"}
+        result = backend.is_available("key", "https://api.redtrack.io")
+        mock_get.assert_called_once_with(
+            "/me/settings", params={},
+            api_key="key", base_url="https://api.redtrack.io"
+        )
+        assert result is True
+
+
+# ── Backend: api_put ──────────────────────────────────────────────
+
+class TestApiPut:
+    @patch("cli_anything.redtrack.utils.redtrack_backend.requests.put")
+    def test_api_put_makes_put_request(self, mock_put):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"id": "123"}
+        mock_resp.status_code = 200
+        mock_resp.content = b'{"id": "123"}'
+        mock_resp.raise_for_status.return_value = None
+        mock_put.return_value = mock_resp
+        result = backend.api_put("/campaigns/123", {"name": "Test"},
+                                  "key", "https://api.redtrack.io")
+        mock_put.assert_called_once()
+        assert result == {"id": "123"}
+
 
 # ── Session management ────────────────────────────────────────────
 
@@ -561,7 +590,7 @@ class TestCampaignCommands:
         ])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.core.campaigns.api_patch")
+    @patch("cli_anything.redtrack.core.campaigns.api_put")
     def test_campaign_update(self, mock_api, runner):
         mock_api.return_value = {"id": "1", "name": "Updated", "status": "paused"}
         result = runner.invoke(cli, [
@@ -641,7 +670,7 @@ class TestOfferCommands:
         data = json.loads(result.output)
         assert data["id"] == "10"
 
-    @patch("cli_anything.redtrack.core.offers.api_patch")
+    @patch("cli_anything.redtrack.core.offers.api_put")
     def test_offer_update(self, mock_api, runner):
         mock_api.return_value = {"id": "5", "name": "Updated Offer"}
         result = runner.invoke(cli, ["offer", "update", "5", "--name", "Updated Offer"])
@@ -1016,11 +1045,13 @@ class TestCoreCampaigns:
         mock_api.return_value = []
         list_campaigns("key", "https://api.redtrack.io",
                        date_from="2024-01-01", date_to="2024-01-31",
-                       limit=50, offset=10)
+                       page=2, per=50)
         call_params = mock_api.call_args[1]["params"]
         assert call_params["date_from"] == "2024-01-01"
-        assert call_params["limit"] == 50
-        assert call_params["offset"] == 10
+        assert call_params["page"] == 2
+        assert call_params["per"] == 50
+        assert "limit" not in call_params
+        assert "offset" not in call_params
 
     @patch("cli_anything.redtrack.core.campaigns.api_post")
     def test_create_campaign_payload(self, mock_api):
@@ -1035,7 +1066,7 @@ class TestCoreCampaigns:
         assert data["cost_type"] == "cpc"
         assert data["cost_value"] == 0.5
 
-    @patch("cli_anything.redtrack.core.campaigns.api_patch")
+    @patch("cli_anything.redtrack.core.campaigns.api_put")
     def test_update_campaign_partial(self, mock_api):
         from cli_anything.redtrack.core.campaigns import update_campaign
         mock_api.return_value = {"id": "1"}
@@ -1043,6 +1074,37 @@ class TestCoreCampaigns:
         data = mock_api.call_args[1]["data"]
         assert data["status"] == "paused"
         assert "name" not in data
+
+    @patch("cli_anything.redtrack.core.campaigns.api_get")
+    def test_list_campaigns_uses_page_per(self, mock_get):
+        mock_get.return_value = {"data": []}
+        campaigns.list_campaigns("key", "https://api.redtrack.io", page=2, per=50)
+        call_params = mock_get.call_args[1]["params"]
+        assert "page" in call_params
+        assert "per" in call_params
+        assert "limit" not in call_params
+        assert "offset" not in call_params
+
+    @patch("cli_anything.redtrack.core.campaigns.api_put")
+    def test_update_campaign_uses_put(self, mock_put):
+        mock_put.return_value = {"id": "abc"}
+        campaigns.update_campaign("key", "https://api.redtrack.io", "abc", name="New")
+        mock_put.assert_called_once()
+        args = mock_put.call_args
+        assert "/campaigns/abc" in str(args)
+
+    @patch("cli_anything.redtrack.core.campaigns.api_put")
+    def test_update_campaign_statuses(self, mock_put):
+        mock_put.return_value = {"updated": 2}
+        result = campaigns.update_campaign_statuses(
+            "key", "https://api.redtrack.io",
+            ids=["id1", "id2"], status="paused"
+        )
+        mock_put.assert_called_once_with(
+            "/campaigns/status",
+            {"ids": ["id1", "id2"], "status": "paused"},
+            api_key="key", base_url="https://api.redtrack.io"
+        )
 
 
 # ── Core module: conversions ──────────────────────────────────────
@@ -1084,3 +1146,41 @@ class TestMissingApiKey:
         assert result.exit_code == 1
         data = json.loads(result.output)
         assert "error" in data
+
+
+# ── Core module: offers ───────────────────────────────────────────
+
+class TestCoreOffers:
+    @patch("cli_anything.redtrack.core.offers.api_put")
+    def test_update_offer_statuses(self, mock_put):
+        mock_put.return_value = {"updated": 1}
+        offers.update_offer_statuses(
+            "key", "https://api.redtrack.io",
+            ids=["o1"], status="active"
+        )
+        mock_put.assert_called_once_with(
+            "/offers/status",
+            {"ids": ["o1"], "status": "active"},
+            api_key="key", base_url="https://api.redtrack.io"
+        )
+
+    @patch("cli_anything.redtrack.core.offers.api_post")
+    def test_create_offer_with_network_id(self, mock_post):
+        mock_post.return_value = {"id": "o99"}
+        offers.create_offer("key", "https://api.redtrack.io",
+                            name="Test", url="https://example.com",
+                            network_id="net123")
+        payload = mock_post.call_args[0][1]
+        assert "network_id" in payload
+        assert payload["network_id"] == "net123"
+
+
+# ── Core module: reports ──────────────────────────────────────────
+
+class TestCoreReports:
+    @patch("cli_anything.redtrack.core.reports.api_get")
+    def test_stream_report_group_by_stream(self, mock_get):
+        mock_get.return_value = {"data": []}
+        reports.stream_report("key", "https://api.redtrack.io")
+        call_params = mock_get.call_args[1]["params"]
+        assert call_params.get("group_by") == "stream"
