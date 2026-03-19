@@ -178,6 +178,16 @@ def api_patch(endpoint: str, data: dict | None = None,
         ) from e
 
 
+def api_put(endpoint: str, payload: dict,
+            api_key: str, base_url: str) -> dict:
+    """Send a PUT request to the RedTrack API."""
+    url = f"{base_url}{endpoint}"
+    headers = {"Content-Type": "application/json", "api-key": api_key}
+    response = requests.put(url, json=payload, headers=headers, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
 def api_delete(endpoint: str, api_key: str | None = None,
                base_url: str = DEFAULT_BASE_URL) -> Any:
     """Perform a DELETE request against the RedTrack API.
@@ -218,25 +228,10 @@ def api_delete(endpoint: str, api_key: str | None = None,
         ) from e
 
 
-def is_available(api_key: str | None = None,
-                 base_url: str = DEFAULT_BASE_URL) -> bool:
-    """Check if the RedTrack API is reachable and the API key is valid.
-
-    Args:
-        api_key: Explicit API key, or None to use REDTRACK_API_KEY env var.
-        base_url: RedTrack API base URL.
-
-    Returns:
-        True if the API responds successfully, False otherwise.
-    """
+def is_available(api_key: str, base_url: str) -> bool:
+    """Check API availability by hitting /me/settings."""
     try:
-        key = _get_api_key(api_key)
-        url = f"{base_url.rstrip('/')}/user"
-        params = {"api_key": key}
-        headers = _build_headers(key)
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        return resp.status_code == 200
-    except (requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-            RuntimeError):
+        resp = api_get("/me/settings", params={}, api_key=api_key, base_url=base_url)
+        return isinstance(resp, dict)
+    except Exception:
         return False

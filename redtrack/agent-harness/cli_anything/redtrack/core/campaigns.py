@@ -4,31 +4,23 @@ Wraps the RedTrack /campaigns REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_patch, api_put, api_delete
 )
 
 
-def list_campaigns(api_key: str, base_url: str, date_from: str | None = None,
-                   date_to: str | None = None, limit: int = 100,
-                   offset: int = 0) -> dict:
-    """List campaigns with optional date range and pagination.
+def list_campaigns(api_key: str, base_url: str,
+                   page: int = 1, per: int = 100,
+                   status: str | None = None) -> dict:
+    """List campaigns with page/per pagination.
 
     Args:
-        api_key: RedTrack API key.
-        base_url: API base URL.
-        date_from: Start date filter (YYYY-MM-DD).
-        date_to: End date filter (YYYY-MM-DD).
-        limit: Maximum number of results.
-        offset: Pagination offset.
-
-    Returns:
-        API response with campaigns list.
+        page: Page number (default 1)
+        per: Results per page (default 100, max 500)
+        status: Filter by status ('active', 'paused', 'archived')
     """
-    params: dict = {"limit": limit, "offset": offset}
-    if date_from:
-        params["date_from"] = date_from
-    if date_to:
-        params["date_to"] = date_to
+    params: dict = {"page": page, "per": per}
+    if status:
+        params["status"] = status
     return api_get("/campaigns", params=params, api_key=api_key, base_url=base_url)
 
 
@@ -101,8 +93,23 @@ def update_campaign(api_key: str, base_url: str, campaign_id: str,
         data["cost_type"] = cost_type
     if cost_value is not None:
         data["cost_value"] = cost_value
-    return api_patch(f"/campaigns/{campaign_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/campaigns/{campaign_id}", data,
+                   api_key=api_key, base_url=base_url)
+
+
+def update_campaign_statuses(api_key: str, base_url: str,
+                              ids: list[str], status: str) -> dict:
+    """Bulk update campaign statuses.
+
+    Args:
+        ids: List of campaign IDs to update
+        status: New status — 'active', 'paused', or 'archived'
+
+    Endpoint: PUT /campaigns/status
+    """
+    payload = {"ids": ids, "status": status}
+    return api_put("/campaigns/status", payload,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_campaign(api_key: str, base_url: str, campaign_id: str) -> dict:

@@ -4,24 +4,32 @@ Wraps the RedTrack /offers and /networks REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_patch, api_put, api_delete
 )
 
 
 # ── Offers ────────────────────────────────────────────────────────────────
 
 
-def list_offers(api_key: str, base_url: str) -> dict:
-    """List all offers.
+def list_offers(api_key: str, base_url: str,
+                page: int = 1, per: int = 100,
+                status: str | None = None) -> dict:
+    """List all offers with page/per pagination.
 
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
+        page: Page number (default 1)
+        per: Results per page (default 100, max 500)
+        status: Filter by status ('active', 'paused', 'archived')
 
     Returns:
         API response with offers list.
     """
-    return api_get("/offers", api_key=api_key, base_url=base_url)
+    params: dict = {"page": page, "per": per}
+    if status:
+        params["status"] = status
+    return api_get("/offers", params=params, api_key=api_key, base_url=base_url)
 
 
 def get_offer(api_key: str, base_url: str, offer_id: str) -> dict:
@@ -38,8 +46,10 @@ def get_offer(api_key: str, base_url: str, offer_id: str) -> dict:
     return api_get(f"/offers/{offer_id}", api_key=api_key, base_url=base_url)
 
 
-def create_offer(api_key: str, base_url: str, name: str,
-                 offer_source_id: str | None = None, url: str | None = None,
+def create_offer(api_key: str, base_url: str,
+                 name: str, url: str,
+                 network_id: str | None = None,
+                 offer_source_id: str | None = None,
                  payout: float | None = None) -> dict:
     """Create a new offer.
 
@@ -47,18 +57,19 @@ def create_offer(api_key: str, base_url: str, name: str,
         api_key: RedTrack API key.
         base_url: API base URL.
         name: Offer name.
-        offer_source_id: ID of the affiliate network/offer source.
         url: Offer destination URL.
+        network_id: ID of the affiliate network.
+        offer_source_id: ID of the affiliate network/offer source.
         payout: Default payout value.
 
     Returns:
         Created offer data dict.
     """
-    data: dict = {"name": name}
+    data: dict = {"name": name, "url": url}
+    if network_id:
+        data["network_id"] = network_id
     if offer_source_id:
         data["offer_source_id"] = offer_source_id
-    if url:
-        data["url"] = url
     if payout is not None:
         data["payout"] = payout
     return api_post("/offers", data=data, api_key=api_key, base_url=base_url)
@@ -91,8 +102,23 @@ def update_offer(api_key: str, base_url: str, offer_id: str,
         data["payout"] = payout
     if status is not None:
         data["status"] = status
-    return api_patch(f"/offers/{offer_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/offers/{offer_id}", data,
+                   api_key=api_key, base_url=base_url)
+
+
+def update_offer_statuses(api_key: str, base_url: str,
+                           ids: list[str], status: str) -> dict:
+    """Bulk update offer statuses.
+
+    Args:
+        ids: List of offer IDs to update
+        status: New status — 'active', 'paused', or 'archived'
+
+    Endpoint: PUT /offers/status
+    """
+    payload = {"ids": ids, "status": status}
+    return api_put("/offers/status", payload,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_offer(api_key: str, base_url: str, offer_id: str) -> dict:

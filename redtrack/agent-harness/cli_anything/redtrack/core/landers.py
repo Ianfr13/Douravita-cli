@@ -4,21 +4,29 @@ Wraps the RedTrack /landers REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_patch, api_put, api_delete
 )
 
 
-def list_landers(api_key: str, base_url: str) -> dict:
-    """List all landers (landing pages).
+def list_landers(api_key: str, base_url: str,
+                 page: int = 1, per: int = 100,
+                 status: str | None = None) -> dict:
+    """List all landers (landing pages) with page/per pagination.
 
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
+        page: Page number (default 1)
+        per: Results per page (default 100, max 500)
+        status: Filter by status ('active', 'paused', 'archived')
 
     Returns:
         API response with landers list.
     """
-    return api_get("/landings", api_key=api_key, base_url=base_url)
+    params: dict = {"page": page, "per": per}
+    if status:
+        params["status"] = status
+    return api_get("/landings", params=params, api_key=api_key, base_url=base_url)
 
 
 def get_lander(api_key: str, base_url: str, lander_id: str) -> dict:
@@ -85,8 +93,8 @@ def update_lander(api_key: str, base_url: str, lander_id: str,
         data["tracking_type"] = tracking_type
     if status is not None:
         data["status"] = status
-    return api_patch(f"/landings/{lander_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/landings/{lander_id}", data,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_lander(api_key: str, base_url: str, lander_id: str) -> dict:
