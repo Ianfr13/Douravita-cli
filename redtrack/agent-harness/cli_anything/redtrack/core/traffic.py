@@ -1,10 +1,12 @@
 """Traffic channel management for RedTrack.
 
 Wraps the RedTrack /sources REST API endpoints.
+
+Endpoint: /sources (confirmed in RedTrack API 2026 release)
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
-    api_get, api_post, api_patch, api_delete
+    api_get, api_post, api_put, api_delete
 )
 
 
@@ -75,8 +77,8 @@ def update_traffic_channel(api_key: str, base_url: str, channel_id: str,
         data["name"] = name
     if status is not None:
         data["status"] = status
-    return api_patch(f"/sources/{channel_id}", data=data,
-                     api_key=api_key, base_url=base_url)
+    return api_put(f"/sources/{channel_id}", data=data,
+                   api_key=api_key, base_url=base_url)
 
 
 def delete_traffic_channel(api_key: str, base_url: str, channel_id: str) -> dict:
