@@ -30,6 +30,8 @@ from cli_anything.redtrack.core import reports as reports_mod
 from cli_anything.redtrack.core import costs as costs_mod
 from cli_anything.redtrack.core import rules as rules_mod
 from cli_anything.redtrack.core import session as session_mod
+from cli_anything.redtrack.core import domains as domains_mod
+from cli_anything.redtrack.core import dictionary as dictionary_mod
 from cli_anything.redtrack.utils.redtrack_backend import api_get, api_post, api_delete
 
 # Global state
@@ -42,10 +44,13 @@ _base_url = DEFAULT_BASE_URL
 def output(data, message: str = ""):
     """Output data in human-readable or JSON format depending on --json flag."""
     if _json_output:
-        click.echo(json.dumps(data, indent=2, default=str))
+        click.echo(json.dumps(data if data is not None else [], indent=2, default=str))
     else:
         if message:
             click.echo(message)
+        if data is None:
+            click.echo("(no data)")
+            return
         if isinstance(data, dict):
             _print_dict(data)
         elif isinstance(data, list):
@@ -66,6 +71,17 @@ def _print_dict(d: dict, indent: int = 0):
             _print_list(v, indent + 1)
         else:
             click.echo(f"{prefix}{k}: {v}")
+
+
+def _extract_list(data) -> list:
+    """Extract list from response — handles null, plain list, and paginated {items, total}."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "items" in data:
+        return data["items"]
+    return [data]
 
 
 def _print_list(items: list, indent: int = 0):
@@ -107,6 +123,15 @@ def _get_key() -> str:
     """Get the active API key from global state or environment."""
     from cli_anything.redtrack.utils.redtrack_backend import _get_api_key
     return _get_api_key(_api_key)
+
+
+def _extract_list(result):
+    """Extract a list from an API result (handles list, dict with data, or None)."""
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        return result.get("data", result)
+    return result
 
 
 # ── Main CLI Group ────────────────────────────────────────────────
@@ -161,14 +186,14 @@ def campaign():
 @campaign.command("list")
 @click.option("--date-from", default=None, help="Start date (YYYY-MM-DD)")
 @click.option("--date-to", default=None, help="End date (YYYY-MM-DD)")
-@click.option("--limit", type=int, default=100, help="Max results (default: 100)")
-@click.option("--offset", type=int, default=0, help="Pagination offset (default: 0)")
+@click.option("--page", type=int, default=1, help="Page number (default: 1)")
+@click.option("--per", type=int, default=100, help="Results per page (default: 100)")
 @handle_error
-def campaign_list(date_from, date_to, limit, offset):
+def campaign_list(date_from, date_to, page, per):
     """List all campaigns."""
     result = campaigns_mod.list_campaigns(
         _get_key(), _base_url,
-        date_from=date_from, date_to=date_to, limit=limit, offset=offset
+        date_from=date_from, date_to=date_to, page=page, per=per
     )
     if _json_output:
         output(result)
@@ -219,7 +244,8 @@ def campaign_create(name, traffic_channel_id, domain, cost_type, cost_value):
 @campaign.command("update")
 @click.argument("campaign_id")
 @click.option("--name", default=None, help="New campaign name")
-@click.option("--status", default=None, help="New status (active, paused)")
+@click.option("--status", type=click.Choice(["active", "paused"]),
+              help="Campaign status.")
 @click.option("--cost-type", default=None, help="New cost type")
 @click.option("--cost-value", type=float, default=None, help="New cost value")
 @handle_error
@@ -234,11 +260,54 @@ def campaign_update(campaign_id, name, status, cost_type, cost_value):
 
 @campaign.command("delete")
 @click.argument("campaign_id")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt.")
 @handle_error
-def campaign_delete(campaign_id):
-    """Archive/delete a campaign."""
-    result = campaigns_mod.delete_campaign(_get_key(), _base_url, campaign_id)
-    output(result, f"Campaign {campaign_id} deleted")
+def campaign_delete(campaign_id, confirm):
+    """Archive a campaign (RedTrack uses status=archived instead of DELETE).
+
+    CAMPAIGN_ID: The ID of the campaign to archive.
+    """
+    if not confirm:
+        click.confirm(
+            f"Archive campaign {campaign_id}? (use --confirm to skip)",
+            abort=True
+        )
+    result = campaigns_mod.update_campaign_statuses(
+        _get_key(), _base_url, ids=[campaign_id], status="archived"
+    )
+    output(result, f"Campaign {campaign_id} archived.")
+
+
+@campaign.command("list-v2")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@click.option("--page", default=1, show_default=True, help="Page number.")
+@click.option("--per", default=100, show_default=True, help="Results per page.")
+@handle_error
+def campaign_list_v2(date_from, date_to, page, per):
+    """List campaigns via the v2 endpoint (lighter, no total_stat)."""
+    result = campaigns_mod.list_campaigns_v2(
+        _get_key(), _base_url, date_from=date_from, date_to=date_to,
+        page=page, per=per
+    )
+    output(_extract_list(result), "Campaigns (v2)")
+
+
+@campaign.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the campaigns.")
+@handle_error
+def campaign_status_update(ids, status):
+    """Bulk update campaign statuses.
+
+    IDS: One or more campaign IDs to update.
+    """
+    result = campaigns_mod.update_campaign_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} campaign(s) to '{status}'")
 
 
 @campaign.command("links")
@@ -300,7 +369,7 @@ def offer_create(name, offer_source_id, url, payout):
     """Create a new offer."""
     result = offers_mod.create_offer(
         _get_key(), _base_url,
-        name=name, offer_source_id=offer_source_id, url=url, payout=payout
+        name=name, network_id=offer_source_id, url=url, payout=payout
     )
     output(result, f"Offer created: {name}")
 
@@ -310,7 +379,8 @@ def offer_create(name, offer_source_id, url, payout):
 @click.option("--name", default=None, help="New offer name")
 @click.option("--url", default=None, help="New offer URL")
 @click.option("--payout", type=float, default=None, help="New payout amount")
-@click.option("--status", default=None, help="New status")
+@click.option("--status", type=click.Choice(["active", "paused"]),
+              help="Offer status.")
 @handle_error
 def offer_update(offer_id, name, url, payout, status):
     """Update an offer."""
@@ -323,11 +393,150 @@ def offer_update(offer_id, name, url, payout, status):
 
 @offer.command("delete")
 @click.argument("offer_id")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt.")
 @handle_error
-def offer_delete(offer_id):
-    """Delete an offer."""
-    result = offers_mod.delete_offer(_get_key(), _base_url, offer_id)
-    output(result, f"Offer {offer_id} deleted")
+def offer_delete(offer_id, confirm):
+    """Archive an offer (RedTrack uses status=archived instead of DELETE).
+
+    OFFER_ID: The ID of the offer to archive.
+    """
+    if not confirm:
+        click.confirm(
+            f"Archive offer {offer_id}? (use --confirm to skip)",
+            abort=True
+        )
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, ids=[offer_id], status="archived"
+    )
+    output(result, f"Offer {offer_id} archived.")
+
+
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
+
+
+@offer.command("export")
+@click.option("--ids", help="Comma-separated offer IDs to export.")
+@click.option("--status", help="Filter by status.")
+@click.option("--networks", help="Filter by network IDs.")
+@click.option("--countries", help="Filter by country codes.")
+@handle_error
+def offer_export(ids, status, networks, countries):
+    """Export offers to S3 via GET /offers/export."""
+    result = offers_mod.export_offers(
+        _get_key(), _base_url, ids=ids, status=status,
+        networks=networks, countries=countries
+    )
+    output(result, "Offer Export")
+
+
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
+
+
+@offer.command("export")
+@click.option("--ids", help="Comma-separated offer IDs to export.")
+@click.option("--status", help="Filter by status.")
+@click.option("--networks", help="Filter by network IDs.")
+@click.option("--countries", help="Filter by country codes.")
+@handle_error
+def offer_export(ids, status, networks, countries):
+    """Export offers to S3 via GET /offers/export."""
+    result = offers_mod.export_offers(
+        _get_key(), _base_url, ids=ids, status=status,
+        networks=networks, countries=countries
+    )
+    output(result, "Offer Export")
+
+
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
+
+
+@offer.command("export")
+@click.option("--ids", help="Comma-separated offer IDs to export.")
+@click.option("--status", help="Filter by status.")
+@click.option("--networks", help="Filter by network IDs.")
+@click.option("--countries", help="Filter by country codes.")
+@handle_error
+def offer_export(ids, status, networks, countries):
+    """Export offers to S3 via GET /offers/export."""
+    result = offers_mod.export_offers(
+        _get_key(), _base_url, ids=ids, status=status,
+        networks=networks, countries=countries
+    )
+    output(result, "Offer Export")
+
+
+@offer.command("status-update")
+@click.argument("ids", nargs=-1, required=True)
+@click.option("--status", required=True,
+              type=click.Choice(["active", "paused", "archived"]),
+              help="New status for the offers.")
+@handle_error
+def offer_status_update(ids, status):
+    """Bulk update offer statuses.
+
+    IDS: One or more offer IDs to update.
+    """
+    result = offers_mod.update_offer_statuses(
+        _get_key(), _base_url, list(ids), status
+    )
+    output(result, f"Updated {len(ids)} offer(s) to '{status}'")
+
+
+@offer.command("export")
+@click.option("--ids", help="Comma-separated offer IDs to export.")
+@click.option("--status", help="Filter by status.")
+@click.option("--networks", help="Filter by network IDs.")
+@click.option("--countries", help="Filter by country codes.")
+@handle_error
+def offer_export(ids, status, networks, countries):
+    """Export offers to S3 via GET /offers/export."""
+    result = offers_mod.export_offers(
+        _get_key(), _base_url, ids=ids, status=status,
+        networks=networks, countries=countries
+    )
+    output(result, "Offer Export")
 
 
 # ── Offer Source Commands ─────────────────────────────────────────
@@ -588,21 +797,18 @@ def conversion_list(date_from, date_to, campaign_id, status):
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No conversions found.")
-                return
-            click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
-            click.echo("─" * 60)
-            for c in items:
-                cid = str(c.get("id", ""))[:14]
-                click_id = str(c.get("click_id", ""))[:18]
-                st = str(c.get("status", ""))
-                payout = str(c.get("payout", ""))
-                click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No conversions found.")
+            return
+        click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
+        click.echo("─" * 60)
+        for c in items:
+            cid = str(c.get("id", ""))[:14]
+            click_id = str(c.get("click_id", ""))[:18]
+            st = str(c.get("status", ""))
+            payout = str(c.get("payout", ""))
+            click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
 
 
 @conversion.command("upload")
@@ -633,6 +839,21 @@ def conversion_types():
         click.echo("Conversion Types:")
         for t in types:
             click.echo(f"  - {t}")
+
+
+@conversion.command("export")
+@click.option("--date-from", required=True, help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", required=True, help="End date (YYYY-MM-DD).")
+@click.option("--campaign-id", help="Filter by campaign ID.")
+@click.option("--offer-id", help="Filter by offer ID.")
+@handle_error
+def conversion_export(date_from, date_to, campaign_id, offer_id):
+    """Export conversions to S3 via GET /conversions/export."""
+    result = conversions_mod.export_conversions(
+        _get_key(), _base_url, date_from=date_from, date_to=date_to,
+        campaign_id=campaign_id, offer_id=offer_id
+    )
+    output(result, "Conversion Export")
 
 
 # ── Report Commands ───────────────────────────────────────────────
@@ -678,12 +899,28 @@ def report_campaigns(date_from, date_to):
 @click.option("--campaign-id", default=None, help="Filter by campaign ID")
 @handle_error
 def report_clicks(date_from, date_to, campaign_id):
-    """Get click logs."""
+    """Get click-level logs via /report endpoint.
+
+    Note: Uses group_by='click'. Returns empty list if no click data exists
+    for the date range, or if this group_by value is unsupported by your
+    RedTrack plan.
+    """
     result = reports_mod.click_logs(
         _get_key(), _base_url,
         date_from=date_from, date_to=date_to, campaign_id=campaign_id
     )
     output(result, "Click Logs")
+
+
+@report.command("stream")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@handle_error
+def report_stream(date_from, date_to):
+    """Get stream-level performance report."""
+    result = reports_mod.stream_report(_get_key(), _base_url,
+                                       date_from=date_from, date_to=date_to)
+    output(result, "Stream Report")
 
 
 # ── Cost Commands ─────────────────────────────────────────────────
@@ -694,37 +931,19 @@ def cost():
 
 
 @cost.command("list")
-@click.option("--date-from", default=None, help="Start date (YYYY-MM-DD)")
-@click.option("--date-to", default=None, help="End date (YYYY-MM-DD)")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@click.option("--campaign-id", help="Filter by campaign ID.")
 @handle_error
-def cost_list(date_from, date_to):
-    """List cost records."""
-    result = costs_mod.list_costs(
-        _get_key(), _base_url, date_from=date_from, date_to=date_to
-    )
-    output(result, "Costs")
-
-
-@cost.command("update")
-@click.option("--campaign-id", required=True, help="Campaign ID")
-@click.option("--cost", "cost_amount", required=True, type=float, help="Cost amount")
-@click.option("--date", default=None, help="Date (YYYY-MM-DD, defaults to today)")
-@handle_error
-def cost_update(campaign_id, cost_amount, date):
-    """Manually update cost for a campaign."""
-    result = costs_mod.update_cost(
+def cost_list(date_from, date_to, campaign_id):
+    """Get cost metrics via the report endpoint (grouped by campaign)."""
+    result = costs_mod.get_cost_from_report(
         _get_key(), _base_url,
-        campaign_id=campaign_id, cost=cost_amount, date=date
+        date_from=date_from,
+        date_to=date_to,
+        campaign_id=campaign_id,
     )
-    output(result, f"Cost updated for campaign {campaign_id}")
-
-
-@cost.command("auto")
-@handle_error
-def cost_auto():
-    """Show auto-update cost status."""
-    result = costs_mod.get_auto_cost_status(_get_key(), _base_url)
-    output(result, "Auto-Cost Status")
+    output(result, "Cost Report")
 
 
 # ── Rule Commands ─────────────────────────────────────────────────
@@ -814,23 +1033,20 @@ def domain():
 @handle_error
 def domain_list():
     """List custom tracking domains."""
-    result = api_get("/domains", api_key=_get_key(), base_url=_base_url)
+    result = domains_mod.list_domains(_get_key(), _base_url)
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No custom domains found.")
-                return
-            click.echo(f"{'ID':<12} {'DOMAIN':<50}")
-            click.echo("─" * 64)
-            for d in items:
-                did = str(d.get("id", ""))
-                dname = str(d.get("domain", d.get("name", "")))[:48]
-                click.echo(f"{did:<12} {dname:<50}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No custom domains found.")
+            return
+        click.echo(f"{'ID':<12} {'DOMAIN':<50}")
+        click.echo("─" * 64)
+        for d in items:
+            did = str(d.get("id", ""))
+            dname = str(d.get("domain", d.get("name", "")))[:48]
+            click.echo(f"{did:<12} {dname:<50}")
 
 
 @domain.command("add")
@@ -838,9 +1054,95 @@ def domain_list():
 @handle_error
 def domain_add(domain_name):
     """Add a custom tracking domain."""
-    result = api_post("/domains", data={"domain": domain_name},
-                      api_key=_get_key(), base_url=_base_url)
+    result = domains_mod.add_domain(_get_key(), _base_url, domain=domain_name)
     output(result, f"Domain added: {domain_name}")
+
+
+@domain.command("update")
+@click.argument("domain_id")
+@click.option("--domain-name", help="New domain name.")
+@handle_error
+def domain_update(domain_id, domain_name):
+    """Update a custom domain. DOMAIN_ID: The domain ID."""
+    result = domains_mod.update_domain(
+        _get_key(), _base_url, domain_id, domain=domain_name
+    )
+    output(result, f"Domain {domain_id} updated.")
+
+
+@domain.command("delete")
+@click.argument("domain_id")
+@click.option("--confirm", is_flag=True)
+@handle_error
+def domain_delete(domain_id, confirm):
+    """Delete a custom domain. DOMAIN_ID: The domain ID."""
+    if not confirm:
+        click.confirm(f"Delete domain {domain_id}?", abort=True)
+    result = domains_mod.delete_domain(_get_key(), _base_url, domain_id)
+    output(result, f"Domain {domain_id} deleted.")
+
+
+@domain.command("ssl-renew")
+@click.argument("domain_id")
+@handle_error
+def domain_ssl_renew(domain_id):
+    """Regenerate the free SSL certificate for a domain."""
+    result = domains_mod.regenerate_ssl(_get_key(), _base_url, domain_id)
+    output(result, f"SSL regeneration triggered for domain {domain_id}.")
+
+
+# ── Lookup Commands ───────────────────────────────────────────────
+@cli.group()
+def lookup():
+    """Reference data lookups — browsers, countries, OS, devices, etc.
+
+    These endpoints do not require authentication.
+    """
+    pass
+
+
+@lookup.command("list")
+@handle_error
+def lookup_list():
+    """List all available lookup types."""
+    keys = dictionary_mod.list_all_keys()
+    output({"available_lookups": keys}, "Available Lookups")
+
+
+@lookup.command("get")
+@click.argument("lookup_type")
+@handle_error
+def lookup_get(lookup_type):
+    """Get reference data for a specific type.
+
+    LOOKUP_TYPE: One of: browsers, countries, os, devices, isp, languages,
+    currencies, cities, categories, connection_types, device_brands,
+    device_fullnames, browser_fullnames, os_fullnames
+    """
+    lookup_map = {
+        "browsers": dictionary_mod.get_browsers,
+        "browser_fullnames": dictionary_mod.get_browser_fullnames,
+        "categories": dictionary_mod.get_categories,
+        "cities": dictionary_mod.get_cities,
+        "connection_types": dictionary_mod.get_connection_types,
+        "countries": dictionary_mod.get_countries,
+        "currencies": dictionary_mod.get_currencies,
+        "device_brands": dictionary_mod.get_device_brands,
+        "device_fullnames": dictionary_mod.get_device_fullnames,
+        "devices": dictionary_mod.get_devices,
+        "isp": dictionary_mod.get_isp,
+        "languages": dictionary_mod.get_languages,
+        "os": dictionary_mod.get_os,
+        "os_fullnames": dictionary_mod.get_os_fullnames,
+    }
+    if lookup_type not in lookup_map:
+        valid = ", ".join(sorted(lookup_map.keys()))
+        raise click.BadParameter(
+            f"Unknown lookup type '{lookup_type}'. Valid: {valid}",
+            param_hint="LOOKUP_TYPE"
+        )
+    result = lookup_map[lookup_type](_base_url)
+    output(result, f"Lookup: {lookup_type}")
 
 
 # ── Session Commands ──────────────────────────────────────────────
@@ -875,16 +1177,17 @@ def repl():
 
     _repl_commands = {
         "account":      "info",
-        "campaign":     "list|get|create|update|delete|links",
-        "offer":        "list|get|create|update|delete",
+        "campaign":     "list|list-v2|get|create|update|delete|status-update|links",
+        "offer":        "list|get|create|update|delete|status-update|export",
         "offer-source": "list|get|create|update|delete",
         "traffic":      "list|get|create|update|delete",
         "lander":       "list|get|create|update|delete",
         "conversion":   "list|upload|types",
         "report":       "general|campaigns|clicks",
-        "cost":         "list|update|auto",
+        "cost":         "list",
         "rule":         "list|get|create|update|delete",
-        "domain":       "list|add",
+        "domain":       "list|add|update|delete|ssl-renew",
+        "lookup":       "list|get",
         "session":      "status",
         "help":         "Show this help",
         "quit":         "Exit REPL",

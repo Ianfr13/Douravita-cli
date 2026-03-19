@@ -687,12 +687,12 @@ class TestOfferCommands:
         result = runner.invoke(cli, ["offer", "update", "5", "--name", "Updated Offer"])
         assert result.exit_code == 0
 
-    @patch("cli_anything.redtrack.core.offers.api_delete")
+    @patch("cli_anything.redtrack.core.offers.api_patch")
     def test_offer_delete(self, mock_api, runner):
-        mock_api.return_value = {"status": "ok"}
-        result = runner.invoke(cli, ["offer", "delete", "5"])
+        mock_api.return_value = {"updated": 1}
+        result = runner.invoke(cli, ["offer", "delete", "5", "--confirm"])
         assert result.exit_code == 0
-        assert "deleted" in result.output
+        assert "archived" in result.output
 
 
 # ── CLI: Offer source commands with mocked API ────────────────────
@@ -906,19 +906,70 @@ class TestReportCommands:
 class TestCostCommands:
     @patch("cli_anything.redtrack.core.costs.api_get")
     def test_cost_list(self, mock_api, runner):
-        mock_api.return_value = {"data": []}
+        mock_api.return_value = []
         result = runner.invoke(cli, ["--json", "cost", "list"])
         assert result.exit_code == 0
 
     @patch("cli_anything.redtrack.core.costs.api_get")
     def test_cost_list_with_dates(self, mock_api, runner):
-        mock_api.return_value = {"data": []}
+        mock_api.return_value = []
         result = runner.invoke(cli, [
-            "--json", "cost", "list",
+            "cost", "list",
             "--date-from", "2024-01-01",
-            "--date-to", "2024-01-31"
+            "--date-to", "2024-01-31",
+            "--campaign-id", "42"
         ])
         assert result.exit_code == 0
+        call_params = mock_api.call_args[1]["params"]
+        assert call_params.get("group_by") == "campaign"
+        assert call_params.get("date_from") == "2024-01-01"
+        assert call_params.get("campaign_id") == "42"
+
+
+# ── Null response handling ─────────────────────────────────────────
+
+class TestNullResponseHandling:
+    def test_output_handles_none(self, runner):
+        """CLI should not crash when API returns null."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b"null"
+            mock_resp.json.return_value = None
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["campaign", "list"])
+            assert result.exit_code == 0
+
+    def test_output_handles_paginated_response(self, runner):
+        """CLI should handle {items: [], total: N} paginated responses."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"items": [], "total": 0}'
+            mock_resp.json.return_value = {"items": [], "total": 0}
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["--json", "conversion", "list",
+                                         "--date-from", "2024-01-01",
+                                         "--date-to", "2024-01-31"])
+            assert result.exit_code == 0
+
+
+# ── get_cost_from_report ───────────────────────────────────────────
+
+class TestGetCostFromReport:
+    def test_cost_from_report(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[]'
+            mock_resp.json.return_value = []
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.costs import get_cost_from_report
+            result = get_cost_from_report("key", "https://api.redtrack.io",
+                                           date_from="2024-01-01", date_to="2024-01-31")
+            call_url = mock_get.call_args[0][0]
+            assert "/report" in call_url
+            assert result == []
 
 
 # ── CLI: Rule commands ────────────────────────────────────────────

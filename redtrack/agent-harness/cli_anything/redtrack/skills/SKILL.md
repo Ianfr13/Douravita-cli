@@ -8,225 +8,242 @@ description: >-
 
 # cli-anything-redtrack
 
-A stateful CLI for the RedTrack performance marketing tracking platform.
-Provides full access to the RedTrack REST API for campaign management,
-conversion tracking, reporting, and marketing automation.
+A CLI for the RedTrack performance marketing tracking platform.
+Wraps the RedTrack REST API (https://api.redtrack.io).
 
-## Setup
+## Installation
 
-```bash
-# Set your API key
-export REDTRACK_API_KEY=your_api_key
+pip install -e redtrack/agent-harness
 
-# Install
-pip install cli-anything-redtrack
-# or from source:
-pip install -e .
-```
+## Authentication
+
+Set the REDTRACK_API_KEY environment variable:
+  export REDTRACK_API_KEY=your_api_key
+
+Or pass per-command: cli-anything-redtrack --api-key YOUR_KEY <command>
+
+Note: The API key must be sent as a query parameter (?api_key=). The CLI handles this automatically.
 
 ## Usage
 
-```bash
-# Enter interactive REPL (no subcommand)
-cli-anything-redtrack
+  cli-anything-redtrack [--json] [--api-key KEY] [--base-url URL] <group> <subcommand> [OPTIONS]
 
-# One-shot commands
-cli-anything-redtrack account info
-cli-anything-redtrack campaign list
+Use --json for machine-readable output (recommended for agent use).
 
-# JSON output for agent/script consumption
-cli-anything-redtrack --json campaign list
-cli-anything-redtrack --json campaign get 12345
-
-# Override API key on command line
-cli-anything-redtrack --api-key YOUR_KEY account info
-
-# Override base URL (e.g., for proxies or testing)
-cli-anything-redtrack --base-url https://custom.api.io campaign list
-```
-
-## Command Groups
+## Command Reference
 
 ### account
-Account information.
-
-| Command | Description |
-|---------|-------------|
-| `info` | Show RedTrack account details (GET /user) |
+  account info                        Get account settings and profile (GET /me/settings)
 
 ### campaign
-Campaign management.
-
-| Command | Description |
-|---------|-------------|
-| `list` | List campaigns (--date-from, --date-to, --limit, --offset) |
-| `get <id>` | Get a campaign by ID |
-| `create` | Create a campaign (--name required, --traffic-channel-id required) |
-| `update <id>` | Update a campaign (--name, --status, --cost-type, --cost-value) |
-| `delete <id>` | Archive/delete a campaign |
-| `links <id>` | Show tracking links for a campaign |
+  campaign list                       List campaigns (GET /campaigns)
+    --date-from DATE                  Filter start date (YYYY-MM-DD)
+    --date-to DATE                    Filter end date (YYYY-MM-DD)
+    --page INT                        Page number (default: 1)
+    --per INT                         Results per page (default: 100)
+  campaign list-v2                    List campaigns via lighter v2 endpoint (no total_stat)
+    --date-from DATE
+    --date-to DATE
+    --page INT
+    --per INT
+  campaign get <ID>                   Get a single campaign
+  campaign create                     Create a new campaign
+    --name TEXT (required)
+    --traffic-channel-id TEXT (required)
+    --domain TEXT
+    --cost-type TEXT                  cpc|cpm|cpa|revshare|auto|daily_budget
+    --cost-value FLOAT
+  campaign update <ID>                Update campaign (PUT /campaigns/{id})
+    --name TEXT
+    --status TEXT                     active|paused
+    --cost-type TEXT
+    --cost-value FLOAT
+  campaign delete <ID>                Archive a campaign (sets status=archived)
+    --confirm                         Skip confirmation prompt
+  campaign status-update <IDS...>     Bulk update campaign statuses
+    --status TEXT (required)          active|paused|archived
+  campaign links <ID>                 Get tracking links for a campaign
 
 ### offer
-Offer management.
+  offer list                          List offers (GET /offers)
+  offer get <ID>                      Get a single offer
+  offer create                        Create a new offer
+    --name TEXT (required)
+    --offer-source-id TEXT            Affiliate network (offer source) ID
+    --url TEXT                        Offer destination URL
+    --payout FLOAT
+  offer update <ID>                   Update offer (PUT /offers/{id})
+    --name TEXT
+    --url TEXT
+    --payout FLOAT
+    --status TEXT
+  offer delete <ID>                   Delete an offer
+  offer status-update <IDS...>        Bulk update offer statuses
+    --status TEXT (required)          active|paused|archived
+  offer export                        Export offers to S3 (GET /offers/export)
+    --ids TEXT                        Comma-separated offer IDs
+    --status TEXT
+    --networks TEXT
+    --countries TEXT
 
-| Command | Description |
-|---------|-------------|
-| `list` | List all offers |
-| `get <id>` | Get an offer by ID |
-| `create` | Create an offer (--name required, --url, --payout, --offer-source-id) |
-| `update <id>` | Update an offer (--name, --url, --payout, --status) |
-| `delete <id>` | Delete an offer |
+### offer-source  (affiliate networks)
+  offer-source list                   List affiliate networks (GET /networks)
+  offer-source get <ID>               Get a network
+  offer-source create                 Create a network
+    --name TEXT (required)
+    --postback-url TEXT
+    --click-id-param TEXT             Click ID parameter name
+    --payout-param TEXT               Payout parameter name
+  offer-source update <ID>            Update a network (PUT /networks/{id})
+    --name TEXT
+    --postback-url TEXT
+    --click-id-param TEXT
+    --payout-param TEXT
+  offer-source delete <ID>            Delete a network
 
-### offer-source
-Affiliate network management.
+### traffic  (traffic channels / sources)
+  traffic list                        List traffic channels (GET /sources)
+  traffic get <ID>                    Get a traffic channel
+  traffic create                      Create a traffic channel
+    --name TEXT (required)
+    --template TEXT
+  traffic update <ID>                 Update a traffic channel (PUT /sources/{id})
+    --name TEXT
+    --status TEXT
+  traffic delete <ID>                 Delete a traffic channel
 
-| Command | Description |
-|---------|-------------|
-| `list` | List all offer sources |
-| `get <id>` | Get an offer source by ID |
-| `create` | Create an offer source (--name, --postback-url, --click-id-param, --payout-param) |
-| `update <id>` | Update an offer source |
-| `delete <id>` | Delete an offer source |
-
-### traffic
-Traffic channel management.
-
-| Command | Description |
-|---------|-------------|
-| `list` | List all traffic channels |
-| `get <id>` | Get a traffic channel by ID |
-| `create` | Create a traffic channel (--name, --template) |
-| `update <id>` | Update a traffic channel (--name, --status) |
-| `delete <id>` | Delete a traffic channel |
-
-### lander
-Landing page management.
-
-| Command | Description |
-|---------|-------------|
-| `list` | List all landers |
-| `get <id>` | Get a lander by ID |
-| `create` | Create a lander (--name, --url, --tracking-type) |
-| `update <id>` | Update a lander (--name, --url, --tracking-type, --status) |
-| `delete <id>` | Delete a lander |
+### lander  (landing pages)
+  lander list                         List landers (GET /landings)
+  lander get <ID>                     Get a lander
+  lander create                       Create a lander
+    --name TEXT (required)
+    --url TEXT
+    --tracking-type TEXT              redirect|direct
+  lander update <ID>                  Update a lander (PUT /landings/{id})
+    --name TEXT
+    --url TEXT
+    --tracking-type TEXT
+    --status TEXT
+  lander delete <ID>                  Delete a lander
 
 ### conversion
-Conversion tracking.
-
-| Command | Description |
-|---------|-------------|
-| `list` | List conversions (--date-from, --date-to, --campaign-id, --status) |
-| `upload` | Upload a conversion (--click-id required, --status, --payout, --type) |
-| `types` | List available conversion types |
+  conversion list                     List conversions (GET /conversions)
+    --date-from DATE
+    --date-to DATE
+    --campaign-id TEXT
+    --status TEXT                     approved|pending|declined|fired
+  conversion upload                   Upload a conversion (POST /conversions)
+    --click-id TEXT (required)
+    --status TEXT                     approved|pending|declined (default: approved)
+    --payout FLOAT
+    --type TEXT
+  conversion export                   Export conversions (GET /conversions/export)
+    --date-from DATE (required)
+    --date-to DATE (required)
+    --campaign-id TEXT
+    --offer-id TEXT
+  conversion types                    List valid conversion types (local, no auth needed)
 
 ### report
-Performance reporting.
-
-| Command | Description |
-|---------|-------------|
-| `general` | General report (--date-from, --date-to, --group-by, --filters) |
-| `campaigns` | Campaigns report (--date-from, --date-to) |
-| `clicks` | Click logs (--date-from, --date-to, --campaign-id) |
+  report general                      General performance report (GET /report)
+    --date-from DATE
+    --date-to DATE
+    --group-by TEXT                   campaign|offer|lander|source|network|country|device|os|browser
+    --filters TEXT
+  report campaigns                    Campaign-level report (group_by=campaign)
+    --date-from DATE
+    --date-to DATE
+  report clicks                       Click-level report (GET /report, group_by=click)
+    --date-from DATE
+    --date-to DATE
+    --campaign-id TEXT
+  report stream                       Stream-level report (group_by=stream)
+    --date-from DATE
+    --date-to DATE
 
 ### cost
-Cost tracking.
+  cost list                           Cost metrics via report endpoint (group_by=campaign)
+    --date-from DATE
+    --date-to DATE
+  Note: RedTrack has no /costs endpoint. Cost data is accessed via /report.
 
-| Command | Description |
-|---------|-------------|
-| `list` | List cost records (--date-from, --date-to) |
-| `update` | Manually update cost (--campaign-id, --cost, --date) |
-| `auto` | Show auto-cost update status |
-
-### rule
-Automation rule management.
-
-| Command | Description |
-|---------|-------------|
-| `list` | List all automation rules |
-| `get <id>` | Get a rule by ID |
-| `create` | Create a rule (--name, --condition, --action) |
-| `update <id>` | Update a rule (--status, --name) |
-| `delete <id>` | Delete a rule |
+### rule  (automation rules)
+  rule list                           List automation rules (GET /rules)
+  rule get <ID>                       Get a rule
+  rule create                         Create a rule
+    --name TEXT (required)
+    --condition TEXT                  Condition expression or JSON
+    --action TEXT                     Action to take when condition is met
+  rule update <ID>                    Update a rule
+    --name TEXT
+    --status TEXT                     active|paused
+  rule delete <ID>                    Delete a rule
 
 ### domain
-Custom tracking domain management.
+  domain list                         List custom tracking domains (GET /domains)
+  domain add                          Add a custom domain (POST /domains)
+    --domain TEXT (required)
+  domain update <ID>                  Update a domain (PUT /domains/{id})
+    --domain-name TEXT
+  domain delete <ID>                  Delete a domain
+    --confirm                         Skip confirmation prompt
+  domain ssl-renew <ID>               Regenerate free SSL certificate for a domain
 
-| Command | Description |
-|---------|-------------|
-| `list` | List custom tracking domains |
-| `add` | Add a custom domain (--domain required) |
+### lookup  (reference data — no auth needed)
+  lookup list                         List all available lookup types
+  lookup get <TYPE>                   Get reference data for a type
+    TYPE: browsers | browser_fullnames | categories | cities |
+          connection_types | countries | currencies | device_brands |
+          device_fullnames | devices | isp | languages | os | os_fullnames
 
 ### session
-Session inspection.
-
-| Command | Description |
-|---------|-------------|
-| `status` | Show current session (masked API key, base URL) |
+  session status                      Show current session (masked API key, base URL)
 
 ## Examples
 
-```bash
 # List all campaigns as JSON
 cli-anything-redtrack --json campaign list
 
+# Get report for January 2025 grouped by country
+cli-anything-redtrack --json report general --date-from 2025-01-01 --date-to 2025-01-31 --group-by country
+
 # Create a campaign
-cli-anything-redtrack campaign create \
-    --name "My Campaign" \
-    --traffic-channel-id 5 \
-    --cost-type cpc \
-    --cost-value 0.50
-
-# Get campaign tracking links
-cli-anything-redtrack campaign links 12345
-
-# List offers
-cli-anything-redtrack offer list
-
-# Create an offer
-cli-anything-redtrack offer create \
-    --name "My Offer" \
-    --url "https://example.com/offer?clickid={clickid}" \
-    --payout 10.00
+cli-anything-redtrack campaign create --name "My Campaign" --traffic-channel-id abc123
 
 # Upload a conversion
-cli-anything-redtrack conversion upload \
-    --click-id "abc123def456" \
-    --status approved \
-    --payout 10.00
+cli-anything-redtrack conversion upload --click-id CLICKID123 --status approved --payout 5.50
 
-# Get a performance report
-cli-anything-redtrack --json report general \
-    --date-from 2024-01-01 \
-    --date-to 2024-01-31 \
-    --group-by campaign
+# Bulk pause campaigns
+cli-anything-redtrack campaign status-update id1 id2 id3 --status paused
+
+# Archive (delete) a campaign
+cli-anything-redtrack campaign delete CAMPID --confirm
+
+# Look up all countries
+cli-anything-redtrack --json lookup get countries
+
+# Get cost data for a date range
+cli-anything-redtrack --json cost list --date-from 2025-01-01 --date-to 2025-01-31
+
+# Export conversions to S3
+cli-anything-redtrack --json conversion export --date-from 2025-01-01 --date-to 2025-01-31
 
 # Create an automation rule
-cli-anything-redtrack rule create \
-    --name "Pause low ROI" \
-    --condition '{"metric":"roi","op":"<","value":0}' \
-    --action "pause_campaign"
+cli-anything-redtrack rule create --name "Pause low ROI" --condition '{"metric":"roi","op":"<","value":0}' --action "pause_campaign"
 
-# Check session
-cli-anything-redtrack session status
-```
+# Add a custom tracking domain
+cli-anything-redtrack domain add --domain track.example.com
 
-## For AI Agents
+## Interactive REPL
 
-When using this CLI programmatically:
+Run without arguments to enter the interactive REPL:
+  cli-anything-redtrack
 
-1. **Always use `--json` flag** for parseable output
-2. **Check return codes** — 0 for success, non-zero for errors
-3. **Parse stderr** for error messages on failure
-4. **Set REDTRACK_API_KEY** before invoking — or use `--api-key`
-5. **Session status** is not persistent between invocations (stateless CLI)
+The REPL supports all commands with tab completion and history.
 
-## Output Formats
+## Known Limitations
 
-All commands support dual output:
-
-- **Human-readable** (default): Formatted tables and key-value pairs
-- **Machine-readable** (`--json` flag): Structured JSON for script/agent use
-
-## Version
-
-1.0.0
+- No /costs endpoint in RedTrack API — cost data via /report
+- campaign delete uses status archiving (sets status=archived), not a true DELETE call
+- /rules endpoint exists but rule conditions/actions schema is undocumented
+- lookup commands do not require authentication
