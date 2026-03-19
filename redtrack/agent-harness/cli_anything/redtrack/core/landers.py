@@ -18,7 +18,7 @@ def list_landers(api_key: str, base_url: str) -> dict:
     Returns:
         API response with landers list.
     """
-    return api_get("/landers", api_key=api_key, base_url=base_url)
+    return api_get("/landings", api_key=api_key, base_url=base_url)
 
 
 def get_lander(api_key: str, base_url: str, lander_id: str) -> dict:
@@ -32,7 +32,7 @@ def get_lander(api_key: str, base_url: str, lander_id: str) -> dict:
     Returns:
         Lander data dict.
     """
-    return api_get(f"/landers/{lander_id}", api_key=api_key, base_url=base_url)
+    return api_get(f"/landings/{lander_id}", api_key=api_key, base_url=base_url)
 
 
 def create_lander(api_key: str, base_url: str, name: str,
@@ -55,7 +55,7 @@ def create_lander(api_key: str, base_url: str, name: str,
         data["url"] = url
     if tracking_type:
         data["tracking_type"] = tracking_type
-    return api_post("/landers", data=data, api_key=api_key, base_url=base_url)
+    return api_post("/landings", data=data, api_key=api_key, base_url=base_url)
 
 
 def update_lander(api_key: str, base_url: str, lander_id: str,
@@ -85,7 +85,7 @@ def update_lander(api_key: str, base_url: str, lander_id: str,
         data["tracking_type"] = tracking_type
     if status is not None:
         data["status"] = status
-    return api_patch(f"/landers/{lander_id}", data=data,
+    return api_patch(f"/landings/{lander_id}", data=data,
                      api_key=api_key, base_url=base_url)
 
 
@@ -100,4 +100,4 @@ def delete_lander(api_key: str, base_url: str, lander_id: str) -> dict:
     Returns:
         Status dict.
     """
-    return api_delete(f"/landers/{lander_id}", api_key=api_key, base_url=base_url)
+    return api_delete(f"/landings/{lander_id}", api_key=api_key, base_url=base_url)

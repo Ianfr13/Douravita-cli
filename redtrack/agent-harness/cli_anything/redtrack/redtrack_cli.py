@@ -147,7 +147,7 @@ def account():
 @handle_error
 def account_info():
     """Show RedTrack account information."""
-    result = api_get("/user", api_key=_get_key(), base_url=_base_url)
+    result = api_get("/me/settings", api_key=_get_key(), base_url=_base_url)
     output(result, "Account Info")
 
 
@@ -173,7 +173,7 @@ def campaign_list(date_from, date_to, limit, offset):
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No campaigns found.")
@@ -265,7 +265,7 @@ def offer_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No offers found.")
@@ -345,7 +345,7 @@ def offer_source_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No offer sources found.")
@@ -426,7 +426,7 @@ def traffic_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No traffic channels found.")
@@ -500,7 +500,7 @@ def lander_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No landers found.")
@@ -588,7 +588,7 @@ def conversion_list(date_from, date_to, campaign_id, status):
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No conversions found.")
@@ -742,7 +742,7 @@ def rule_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No rules found.")
@@ -818,7 +818,7 @@ def domain_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else result.get("data", result)
+        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
         if isinstance(items, list):
             if not items:
                 click.echo("No custom domains found.")

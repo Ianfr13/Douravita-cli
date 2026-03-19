@@ -1,6 +1,6 @@
 """Traffic channel management for RedTrack.
 
-Wraps the RedTrack /traffic_channels REST API endpoints.
+Wraps the RedTrack /sources REST API endpoints.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import (
@@ -18,7 +18,7 @@ def list_traffic_channels(api_key: str, base_url: str) -> dict:
     Returns:
         API response with traffic channels list.
     """
-    return api_get("/traffic_channels", api_key=api_key, base_url=base_url)
+    return api_get("/sources", api_key=api_key, base_url=base_url)
 
 
 def get_traffic_channel(api_key: str, base_url: str, channel_id: str) -> dict:
@@ -32,7 +32,7 @@ def get_traffic_channel(api_key: str, base_url: str, channel_id: str) -> dict:
     Returns:
         Traffic channel data dict.
     """
-    return api_get(f"/traffic_channels/{channel_id}",
+    return api_get(f"/sources/{channel_id}",
                    api_key=api_key, base_url=base_url)
 
 
@@ -52,7 +52,7 @@ def create_traffic_channel(api_key: str, base_url: str, name: str,
     data: dict = {"name": name}
     if template:
         data["template"] = template
-    return api_post("/traffic_channels", data=data, api_key=api_key, base_url=base_url)
+    return api_post("/sources", data=data, api_key=api_key, base_url=base_url)
 
 
 def update_traffic_channel(api_key: str, base_url: str, channel_id: str,
@@ -75,7 +75,7 @@ def update_traffic_channel(api_key: str, base_url: str, channel_id: str,
         data["name"] = name
     if status is not None:
         data["status"] = status
-    return api_patch(f"/traffic_channels/{channel_id}", data=data,
+    return api_patch(f"/sources/{channel_id}", data=data,
                      api_key=api_key, base_url=base_url)
 
 
@@ -90,5 +90,5 @@ def delete_traffic_channel(api_key: str, base_url: str, channel_id: str) -> dict
     Returns:
         Status dict.
     """
-    return api_delete(f"/traffic_channels/{channel_id}",
+    return api_delete(f"/sources/{channel_id}",
                       api_key=api_key, base_url=base_url)

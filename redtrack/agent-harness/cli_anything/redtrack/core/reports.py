@@ -1,6 +1,6 @@
 """Reporting for RedTrack.
 
-Wraps the RedTrack /reports and /clicks REST API endpoints.
+Wraps the RedTrack /report REST API endpoint.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import api_get
@@ -33,7 +33,7 @@ def general_report(api_key: str, base_url: str,
         params["group_by"] = group_by
     if filters:
         params["filters"] = filters
-    return api_get("/reports", params=params, api_key=api_key, base_url=base_url)
+    return api_get("/report", params=params, api_key=api_key, base_url=base_url)
 
 
 def campaigns_report(api_key: str, base_url: str,
@@ -50,12 +50,12 @@ def campaigns_report(api_key: str, base_url: str,
     Returns:
         Campaigns report data dict.
     """
-    params: dict = {}
+    params: dict = {"group_by": "campaign"}
     if date_from:
         params["date_from"] = date_from
     if date_to:
         params["date_to"] = date_to
-    return api_get("/reports/campaigns", params=params,
+    return api_get("/report", params=params,
                    api_key=api_key, base_url=base_url)
 
 
@@ -63,7 +63,7 @@ def click_logs(api_key: str, base_url: str,
                date_from: str | None = None,
                date_to: str | None = None,
                campaign_id: str | None = None) -> dict:
-    """Get click logs.
+    """Get click logs via the /report endpoint grouped by click.
 
     Args:
         api_key: RedTrack API key.
@@ -75,11 +75,11 @@ def click_logs(api_key: str, base_url: str,
     Returns:
         Click log data dict.
     """
-    params: dict = {}
+    params: dict = {"group_by": "click"}
     if date_from:
         params["date_from"] = date_from
     if date_to:
         params["date_to"] = date_to
     if campaign_id:
         params["campaign_id"] = campaign_id
-    return api_get("/clicks", params=params, api_key=api_key, base_url=base_url)
+    return api_get("/report", params=params, api_key=api_key, base_url=base_url)
