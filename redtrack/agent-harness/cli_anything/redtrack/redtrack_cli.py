@@ -42,10 +42,13 @@ _base_url = DEFAULT_BASE_URL
 def output(data, message: str = ""):
     """Output data in human-readable or JSON format depending on --json flag."""
     if _json_output:
-        click.echo(json.dumps(data, indent=2, default=str))
+        click.echo(json.dumps(data if data is not None else [], indent=2, default=str))
     else:
         if message:
             click.echo(message)
+        if data is None:
+            click.echo("(no data)")
+            return
         if isinstance(data, dict):
             _print_dict(data)
         elif isinstance(data, list):
@@ -66,6 +69,17 @@ def _print_dict(d: dict, indent: int = 0):
             _print_list(v, indent + 1)
         else:
             click.echo(f"{prefix}{k}: {v}")
+
+
+def _extract_list(data) -> list:
+    """Extract list from response — handles null, plain list, and paginated {items, total}."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "items" in data:
+        return data["items"]
+    return [data]
 
 
 def _print_list(items: list, indent: int = 0):
@@ -588,21 +602,18 @@ def conversion_list(date_from, date_to, campaign_id, status):
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No conversions found.")
-                return
-            click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
-            click.echo("─" * 60)
-            for c in items:
-                cid = str(c.get("id", ""))[:14]
-                click_id = str(c.get("click_id", ""))[:18]
-                st = str(c.get("status", ""))
-                payout = str(c.get("payout", ""))
-                click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No conversions found.")
+            return
+        click.echo(f"{'ID':<16} {'CLICK ID':<20} {'STATUS':<12} {'PAYOUT':<10}")
+        click.echo("─" * 60)
+        for c in items:
+            cid = str(c.get("id", ""))[:14]
+            click_id = str(c.get("click_id", ""))[:18]
+            st = str(c.get("status", ""))
+            payout = str(c.get("payout", ""))
+            click.echo(f"{cid:<16} {click_id:<20} {st:<12} {payout:<10}")
 
 
 @conversion.command("upload")
@@ -694,37 +705,19 @@ def cost():
 
 
 @cost.command("list")
-@click.option("--date-from", default=None, help="Start date (YYYY-MM-DD)")
-@click.option("--date-to", default=None, help="End date (YYYY-MM-DD)")
+@click.option("--date-from", help="Start date (YYYY-MM-DD).")
+@click.option("--date-to", help="End date (YYYY-MM-DD).")
+@click.option("--campaign-id", help="Filter by campaign ID.")
 @handle_error
-def cost_list(date_from, date_to):
-    """List cost records."""
-    result = costs_mod.list_costs(
-        _get_key(), _base_url, date_from=date_from, date_to=date_to
-    )
-    output(result, "Costs")
-
-
-@cost.command("update")
-@click.option("--campaign-id", required=True, help="Campaign ID")
-@click.option("--cost", "cost_amount", required=True, type=float, help="Cost amount")
-@click.option("--date", default=None, help="Date (YYYY-MM-DD, defaults to today)")
-@handle_error
-def cost_update(campaign_id, cost_amount, date):
-    """Manually update cost for a campaign."""
-    result = costs_mod.update_cost(
+def cost_list(date_from, date_to, campaign_id):
+    """Get cost metrics via the report endpoint (grouped by campaign)."""
+    result = costs_mod.get_cost_from_report(
         _get_key(), _base_url,
-        campaign_id=campaign_id, cost=cost_amount, date=date
+        date_from=date_from,
+        date_to=date_to,
+        campaign_id=campaign_id,
     )
-    output(result, f"Cost updated for campaign {campaign_id}")
-
-
-@cost.command("auto")
-@handle_error
-def cost_auto():
-    """Show auto-update cost status."""
-    result = costs_mod.get_auto_cost_status(_get_key(), _base_url)
-    output(result, "Auto-Cost Status")
+    output(result, "Cost Report")
 
 
 # ── Rule Commands ─────────────────────────────────────────────────
@@ -818,19 +811,16 @@ def domain_list():
     if _json_output:
         output(result)
     else:
-        items = result if isinstance(result, list) else (result.get("data", result) if result is not None else [])
-        if isinstance(items, list):
-            if not items:
-                click.echo("No custom domains found.")
-                return
-            click.echo(f"{'ID':<12} {'DOMAIN':<50}")
-            click.echo("─" * 64)
-            for d in items:
-                did = str(d.get("id", ""))
-                dname = str(d.get("domain", d.get("name", "")))[:48]
-                click.echo(f"{did:<12} {dname:<50}")
-        else:
-            output(result)
+        items = _extract_list(result)
+        if not items:
+            click.echo("No custom domains found.")
+            return
+        click.echo(f"{'ID':<12} {'DOMAIN':<50}")
+        click.echo("─" * 64)
+        for d in items:
+            did = str(d.get("id", ""))
+            dname = str(d.get("domain", d.get("name", "")))[:48]
+            click.echo(f"{did:<12} {dname:<50}")
 
 
 @domain.command("add")
@@ -882,7 +872,7 @@ def repl():
         "lander":       "list|get|create|update|delete",
         "conversion":   "list|upload|types",
         "report":       "general|campaigns|clicks",
-        "cost":         "list|update|auto",
+        "cost":         "list",
         "rule":         "list|get|create|update|delete",
         "domain":       "list|add",
         "session":      "status",
