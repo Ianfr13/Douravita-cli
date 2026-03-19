@@ -1,14 +1,12 @@
 """Cost information for RedTrack.
 
 NOTE: The /costs REST endpoint does not exist in the RedTrack API (confirmed 404).
-This was verified by direct API testing with a live API key.
+Cost data in RedTrack is embedded within campaign/report data.
+To access cost metrics, use the reports module with appropriate group_by fields.
 
-Cost data in RedTrack is embedded within campaign and report data.
-To access cost metrics (cost, CPC, ROI, etc.), use the report endpoint
-with group_by='campaign' — which is what get_cost_from_report() does.
-
-Cost updates (ad spend sync) happen automatically through traffic source
-integrations or manually via the RedTrack dashboard.
+The update_cost function is kept for compatibility but currently has no
+direct API endpoint — cost updates happen through traffic source integrations
+or manual entry in the RedTrack dashboard.
 """
 
 from cli_anything.redtrack.utils.redtrack_backend import api_get

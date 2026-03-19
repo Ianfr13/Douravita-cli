@@ -64,19 +64,12 @@ def update_domain(api_key: str, base_url: str, domain_id: str,
 
     Returns:
         Updated domain data dict.
-
-    Raises:
-        ValueError: If neither domain nor domain_type is provided.
     """
     data: dict = {}
     if domain is not None:
         data["domain"] = domain
     if domain_type is not None:
         data["type"] = domain_type
-    if not data:
-        raise ValueError(
-            "At least one field must be provided: domain or domain_type."
-        )
     return api_put(f"/domains/{domain_id}", data=data, api_key=api_key, base_url=base_url)
 
 

@@ -75,6 +75,35 @@ def upload_conversion(api_key: str, base_url: str, click_id: str,
     return api_post("/conversions", data=data, api_key=api_key, base_url=base_url)
 
 
+def export_conversions(api_key: str, base_url: str,
+                        date_from: str, date_to: str,
+                        campaign_id: str | None = None,
+                        offer_id: str | None = None,
+                        report_recipient: int | None = None) -> dict:
+    """Export conversions to S3 via GET /conversions/export.
+
+    Args:
+        api_key: RedTrack API key.
+        base_url: API base URL.
+        date_from: Start date (YYYY-MM-DD) — required.
+        date_to: End date (YYYY-MM-DD) — required.
+        campaign_id: Filter by campaign ID.
+        offer_id: Filter by offer ID.
+        report_recipient: System recipient ID for the export report.
+
+    Returns:
+        API response with export info.
+    """
+    params: dict = {"date_from": date_from, "date_to": date_to}
+    if campaign_id:
+        params["campaign_id"] = campaign_id
+    if offer_id:
+        params["offer_id"] = offer_id
+    if report_recipient is not None:
+        params["report_recipient"] = report_recipient
+    return api_get("/conversions/export", params=params, api_key=api_key, base_url=base_url)
+
+
 def get_conversion_types() -> list[str]:
     """Return the list of known RedTrack conversion type names.
 

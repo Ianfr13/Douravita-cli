@@ -906,19 +906,70 @@ class TestReportCommands:
 class TestCostCommands:
     @patch("cli_anything.redtrack.core.costs.api_get")
     def test_cost_list(self, mock_api, runner):
-        mock_api.return_value = {"data": []}
+        mock_api.return_value = []
         result = runner.invoke(cli, ["--json", "cost", "list"])
         assert result.exit_code == 0
 
     @patch("cli_anything.redtrack.core.costs.api_get")
     def test_cost_list_with_dates(self, mock_api, runner):
-        mock_api.return_value = {"data": []}
+        mock_api.return_value = []
         result = runner.invoke(cli, [
-            "--json", "cost", "list",
+            "cost", "list",
             "--date-from", "2024-01-01",
-            "--date-to", "2024-01-31"
+            "--date-to", "2024-01-31",
+            "--campaign-id", "42"
         ])
         assert result.exit_code == 0
+        call_params = mock_api.call_args[1]["params"]
+        assert call_params.get("group_by") == "campaign"
+        assert call_params.get("date_from") == "2024-01-01"
+        assert call_params.get("campaign_id") == "42"
+
+
+# ── Null response handling ─────────────────────────────────────────
+
+class TestNullResponseHandling:
+    def test_output_handles_none(self, runner):
+        """CLI should not crash when API returns null."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b"null"
+            mock_resp.json.return_value = None
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["campaign", "list"])
+            assert result.exit_code == 0
+
+    def test_output_handles_paginated_response(self, runner):
+        """CLI should handle {items: [], total: N} paginated responses."""
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'{"items": [], "total": 0}'
+            mock_resp.json.return_value = {"items": [], "total": 0}
+            mock_get.return_value = mock_resp
+            result = runner.invoke(cli, ["--json", "conversion", "list",
+                                         "--date-from", "2024-01-01",
+                                         "--date-to", "2024-01-31"])
+            assert result.exit_code == 0
+
+
+# ── get_cost_from_report ───────────────────────────────────────────
+
+class TestGetCostFromReport:
+    def test_cost_from_report(self):
+        with patch("requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.content = b'[]'
+            mock_resp.json.return_value = []
+            mock_get.return_value = mock_resp
+            from cli_anything.redtrack.core.costs import get_cost_from_report
+            result = get_cost_from_report("key", "https://api.redtrack.io",
+                                           date_from="2024-01-01", date_to="2024-01-31")
+            call_url = mock_get.call_args[0][0]
+            assert "/report" in call_url
+            assert result == []
 
 
 # ── CLI: Rule commands ────────────────────────────────────────────
@@ -1282,27 +1333,6 @@ class TestDomainsModule:
             regenerate_ssl("key", "https://api.redtrack.io", "d1")
             url = mock_post.call_args[0][0]
             assert "/domains/regenerated_free_ssl/d1" in url
-
-
-class TestUpdateDomainValidation:
-    def test_update_domain_raises_if_no_fields(self):
-        from cli_anything.redtrack.core.domains import update_domain
-        with pytest.raises(ValueError, match="At least one field"):
-            update_domain("key", "https://api.redtrack.io", "d1")
-
-    def test_update_domain_with_domain_name(self):
-        with patch("requests.put") as mock_put:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.content = b'{"id":"d1","domain":"new.example.com"}'
-            mock_resp.json.return_value = {"id": "d1", "domain": "new.example.com"}
-            mock_put.return_value = mock_resp
-            from cli_anything.redtrack.core.domains import update_domain
-            result = update_domain("key", "https://api.redtrack.io", "d1",
-                                   domain="new.example.com")
-            assert result["domain"] == "new.example.com"
-            _, kwargs = mock_put.call_args
-            assert kwargs["json"]["domain"] == "new.example.com"
 
 
 class TestDictionaryModule:

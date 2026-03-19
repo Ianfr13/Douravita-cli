@@ -181,20 +181,7 @@ def api_patch(endpoint: str, data: dict | None = None,
 def api_put(endpoint: str, data: dict | None = None,
             api_key: str | None = None,
             base_url: str = DEFAULT_BASE_URL) -> Any:
-    """Perform a PUT request against the RedTrack API.
-
-    Args:
-        endpoint: API endpoint path (e.g., '/campaigns/123').
-        data: JSON request body with the full resource representation.
-        api_key: Explicit API key, or None to use REDTRACK_API_KEY env var.
-        base_url: RedTrack API base URL.
-
-    Returns:
-        Parsed JSON response as a dict or list.
-
-    Raises:
-        RuntimeError: On HTTP error, connection failure, or missing API key.
-    """
+    """Perform a PUT request against the RedTrack API."""
     key = _get_api_key(api_key)
     url = f"{base_url.rstrip('/')}{endpoint}"
     params = _build_params(None, key)
