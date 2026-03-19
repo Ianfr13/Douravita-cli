@@ -1,63 +1,43 @@
-"""Cost tracking for RedTrack.
+"""Cost information for RedTrack.
 
-Wraps the RedTrack /costs REST API endpoints.
+NOTE: The /costs REST endpoint does not exist in the RedTrack API (confirmed 404).
+This was verified by direct API testing with a live API key.
+
+Cost data in RedTrack is embedded within campaign and report data.
+To access cost metrics (cost, CPC, ROI, etc.), use the report endpoint
+with group_by='campaign' — which is what get_cost_from_report() does.
+
+Cost updates (ad spend sync) happen automatically through traffic source
+integrations or manually via the RedTrack dashboard.
 """
 
-from cli_anything.redtrack.utils.redtrack_backend import api_get, api_post
+from cli_anything.redtrack.utils.redtrack_backend import api_get
 
 
-def list_costs(api_key: str, base_url: str,
-               date_from: str | None = None,
-               date_to: str | None = None) -> dict:
-    """List cost records.
+def get_cost_from_report(api_key: str, base_url: str,
+                         date_from: str | None = None,
+                         date_to: str | None = None,
+                         campaign_id: str | None = None) -> dict:
+    """Get cost data via the /report endpoint (grouped by campaign).
+
+    Since RedTrack does not have a dedicated /costs endpoint, cost metrics
+    (cost, cpc, roi, etc.) are available through the standard report endpoint.
 
     Args:
         api_key: RedTrack API key.
         base_url: API base URL.
         date_from: Start date filter (YYYY-MM-DD).
         date_to: End date filter (YYYY-MM-DD).
+        campaign_id: Filter by campaign ID (optional).
 
     Returns:
-        API response with costs data.
+        Report data dict containing cost metrics per campaign.
     """
-    params: dict = {}
+    params: dict = {"group_by": "campaign"}
     if date_from:
         params["date_from"] = date_from
     if date_to:
         params["date_to"] = date_to
-    return api_get("/costs", params=params, api_key=api_key, base_url=base_url)
-
-
-def update_cost(api_key: str, base_url: str, campaign_id: str,
-                cost: float, date: str | None = None) -> dict:
-    """Manually update cost for a campaign.
-
-    Args:
-        api_key: RedTrack API key.
-        base_url: API base URL.
-        campaign_id: Campaign identifier.
-        cost: Cost amount to record.
-        date: Date for the cost entry (YYYY-MM-DD), defaults to today.
-
-    Returns:
-        API response dict.
-    """
-    data: dict = {"campaign_id": campaign_id, "cost": cost}
-    if date:
-        data["date"] = date
-    return api_post("/costs", data=data, api_key=api_key, base_url=base_url)
-
-
-def get_auto_cost_status(api_key: str, base_url: str) -> dict:
-    """Get auto-update cost status information.
-
-    Retrieves information about automatic cost synchronization settings.
-
-    Args:
-        api_key: RedTrack API key.
-        base_url: API base URL.
-
-    Returns:
-        Cost auto-update status dict.
-    """
-    return api_get("/costs/auto", api_key=api_key, base_url=base_url)
+    if campaign_id:
+        params["campaign_id"] = campaign_id
+    return api_get("/report", params=params, api_key=api_key, base_url=base_url)

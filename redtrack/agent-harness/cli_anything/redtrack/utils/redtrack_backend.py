@@ -178,6 +178,48 @@ def api_patch(endpoint: str, data: dict | None = None,
         ) from e
 
 
+def api_put(endpoint: str, data: dict | None = None,
+            api_key: str | None = None,
+            base_url: str = DEFAULT_BASE_URL) -> Any:
+    """Perform a PUT request against the RedTrack API.
+
+    Args:
+        endpoint: API endpoint path (e.g., '/campaigns/123').
+        data: JSON request body with the full resource representation.
+        api_key: Explicit API key, or None to use REDTRACK_API_KEY env var.
+        base_url: RedTrack API base URL.
+
+    Returns:
+        Parsed JSON response as a dict or list.
+
+    Raises:
+        RuntimeError: On HTTP error, connection failure, or missing API key.
+    """
+    key = _get_api_key(api_key)
+    url = f"{base_url.rstrip('/')}{endpoint}"
+    params = _build_params(None, key)
+    headers = _build_headers(key)
+    try:
+        resp = requests.put(url, json=data, params=params, headers=headers, timeout=30)
+        resp.raise_for_status()
+        if resp.status_code == 204 or not resp.content:
+            return {"status": "ok"}
+        return resp.json()
+    except requests.exceptions.ConnectionError as e:
+        raise RuntimeError(
+            f"Cannot connect to RedTrack API at {base_url}. "
+            "Check your internet connection."
+        ) from e
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(
+            f"RedTrack API error {resp.status_code} on PUT {endpoint}: {resp.text}"
+        ) from e
+    except requests.exceptions.Timeout as e:
+        raise RuntimeError(
+            f"Request to RedTrack API timed out: PUT {endpoint}"
+        ) from e
+
+
 def api_delete(endpoint: str, api_key: str | None = None,
                base_url: str = DEFAULT_BASE_URL) -> Any:
     """Perform a DELETE request against the RedTrack API.
@@ -231,7 +273,7 @@ def is_available(api_key: str | None = None,
     """
     try:
         key = _get_api_key(api_key)
-        url = f"{base_url.rstrip('/')}/user"
+        url = f"{base_url.rstrip('/')}/me/settings"
         params = {"api_key": key}
         headers = _build_headers(key)
         resp = requests.get(url, params=params, headers=headers, timeout=10)
