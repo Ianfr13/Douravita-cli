@@ -1,0 +1,2 @@
+[console_scripts]
+cli-anything-meta-ads = cli_anything.meta_ads.meta_ads_cli:main
