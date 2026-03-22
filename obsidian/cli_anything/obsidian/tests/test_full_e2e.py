@@ -22,7 +22,8 @@ from cli_anything.obsidian.utils.obsidian_backend import (
 
 # ── Skip guard ────────────────────────────────────────────────────────────────
 
-OBSIDIAN_AVAILABLE = is_available(DEFAULT_BASE_URL)
+BASE_URL = os.environ.get("OBSIDIAN_HOST", DEFAULT_BASE_URL)
+OBSIDIAN_AVAILABLE = is_available(BASE_URL)
 API_KEY = os.environ.get("OBSIDIAN_API_KEY", "")
 
 pytestmark = pytest.mark.skipif(
@@ -54,7 +55,7 @@ class TestCLISubprocess:
     """Run CLI commands as subprocesses and verify output."""
 
     CLI = _resolve_cli("cli-anything-obsidian")
-    ENV = {**os.environ, "OBSIDIAN_API_KEY": API_KEY}
+    ENV = {**os.environ, "OBSIDIAN_API_KEY": API_KEY, "OBSIDIAN_HOST": BASE_URL}
 
     def run(self, *args, input_text: str | None = None) -> subprocess.CompletedProcess:
         """Run CLI with given args and return result."""
@@ -89,6 +90,12 @@ class TestServerStatus(TestCLISubprocess):
         # Response may vary but should be a dict
         assert isinstance(data, dict)
 
+    def test_status_shows_authenticated(self):
+        """Status with API key should show Authenticated: True."""
+        result = self.run("status")
+        assert result.returncode == 0
+        assert "Authenticated" in result.stdout
+
 
 class TestVaultList(TestCLISubprocess):
     """Test vault directory listing."""
@@ -100,6 +107,11 @@ class TestVaultList(TestCLISubprocess):
     def test_vault_list_json(self):
         data = self.run_json("vault", "list")
         assert isinstance(data, (dict, list))
+
+    def test_vault_list_with_slash(self):
+        """vault list / should not return 404 (bug #7 fix)."""
+        result = self.run("vault", "list", "/")
+        assert result.returncode == 0
 
 
 class TestVaultCRUD(TestCLISubprocess):
@@ -146,25 +158,88 @@ class TestVaultCRUD(TestCLISubprocess):
         assert "CLI Test Note" not in result.stdout
 
     def test_vault_patch_append_heading(self):
+        # H2 headings require delimiter path: "H1::H2" (bug #3 — API limitation)
         result = self.run(
-            "vault", "patch", TEST_NOTE_PATH, "- [ ] Patched task",
-            "--op", "append", "--type", "heading", "--target", "Tasks",
+            "vault", "patch", TEST_NOTE_PATH,
+            "--op", "append", "--type", "heading",
+            "--target", "CLI Test Note::Tasks",
+            "--", "- [ ] Patched task",
         )
-        assert result.returncode == 0
+        assert result.returncode == 0, (
+            f"Patch failed: {result.stderr}"
+        )
         content_result = self.run("vault", "get", TEST_NOTE_PATH)
         assert "Patched task" in content_result.stdout
 
     def test_vault_patch_create_if_missing(self):
         result = self.run(
-            "vault", "patch", TEST_NOTE_PATH, "Created content",
+            "vault", "patch", TEST_NOTE_PATH,
             "--op", "append", "--type", "heading", "--target", "New Section",
-            "--create",
+            "--create", "--", "Created content",
         )
         assert result.returncode == 0
+
+    def test_vault_put_stdin(self):
+        """vault put via stdin (bug #2 fix: frontmatter with ---)."""
+        stdin_content = "---\ntitle: Stdin Test\n---\n\n# Hello"
+        result = self.run("vault", "put", TEST_NOTE_PATH, "-", input_text=stdin_content)
+        assert result.returncode == 0
+        get_result = self.run("vault", "get", TEST_NOTE_PATH)
+        assert "Stdin Test" in get_result.stdout or "Hello" in get_result.stdout
 
     def test_vault_get_nonexistent_fails(self):
         result = self.run("vault", "get", "nonexistent/note-xyz-12345.md")
         assert result.returncode != 0
+
+
+class TestVaultExists(TestCLISubprocess):
+    """Test vault exists command."""
+
+    def setup_method(self):
+        self.run("vault", "put", TEST_NOTE_PATH, TEST_NOTE_CONTENT)
+
+    def teardown_method(self):
+        self.run("vault", "delete", TEST_NOTE_PATH, "--yes")
+
+    def test_exists_returns_0_for_existing(self):
+        result = self.run("vault", "exists", TEST_NOTE_PATH)
+        assert result.returncode == 0
+        assert "exists" in result.stdout.lower()
+
+    def test_exists_returns_1_for_missing(self):
+        result = self.run("vault", "exists", "nonexistent/xyz-99999.md")
+        assert result.returncode == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_exists_json_output(self):
+        data = self.run_json("vault", "exists", TEST_NOTE_PATH)
+        assert data["exists"] is True
+
+
+class TestVaultMove(TestCLISubprocess):
+    """Test vault move command."""
+
+    MOVE_SRC = "cli-anything-obsidian-test/move-src.md"
+    MOVE_DST = "cli-anything-obsidian-test/move-dst.md"
+
+    def setup_method(self):
+        self.run("vault", "put", self.MOVE_SRC, "# Move Test")
+        # Ensure dst doesn't exist
+        self.run("vault", "delete", self.MOVE_DST, "--yes")
+
+    def teardown_method(self):
+        self.run("vault", "delete", self.MOVE_SRC, "--yes")
+        self.run("vault", "delete", self.MOVE_DST, "--yes")
+
+    def test_move_success(self):
+        result = self.run("vault", "move", self.MOVE_SRC, self.MOVE_DST)
+        assert result.returncode == 0
+        # dst should exist
+        get_result = self.run("vault", "get", self.MOVE_DST)
+        assert "Move Test" in get_result.stdout
+        # src should not exist
+        get_src = self.run("vault", "get", self.MOVE_SRC)
+        assert get_src.returncode != 0
 
 
 class TestSearch(TestCLISubprocess):
@@ -190,8 +265,8 @@ class TestSearch(TestCLISubprocess):
         assert "No results" in result.stdout
 
     @pytest.mark.skipif(
-        True,  # Set to False if Dataview plugin is installed
-        reason="Dataview plugin may not be installed",
+        False,
+        reason="Dataview plugin not installed",
     )
     def test_dql_search(self):
         data = self.run_json(

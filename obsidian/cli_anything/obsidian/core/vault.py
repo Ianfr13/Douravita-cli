@@ -18,8 +18,9 @@ def list_dir(base_url: str, api_key: str | None, path: str = "") -> dict:
     Returns:
         Dict with 'files' key containing list of file/directory names.
     """
-    if path:
-        encoded = encode_path(path.strip("/"))
+    stripped = path.strip("/") if path else ""
+    if stripped:
+        encoded = encode_path(stripped)
         endpoint = f"/vault/{encoded}/"
     else:
         endpoint = "/vault/"
@@ -120,3 +121,111 @@ def delete(base_url: str, api_key: str | None, path: str) -> dict:
     """
     encoded = encode_path(path)
     return api_delete(base_url, f"/vault/{encoded}", api_key=api_key)
+
+
+def exists(base_url: str, api_key: str | None, path: str) -> bool:
+    """Check if a vault file exists without fetching its content.
+
+    Uses a HEAD-like approach: requests minimal data (document map) and
+    checks for a 404 error.
+
+    Args:
+        base_url: Obsidian server base URL.
+        api_key: Bearer token.
+        path: File path relative to vault root.
+
+    Returns:
+        True if the file exists, False otherwise.
+    """
+    try:
+        get(base_url, api_key, path, fmt="map")
+        return True
+    except RuntimeError:
+        return False
+
+
+def move(base_url: str, api_key: str | None, src: str, dst: str) -> dict:
+    """Move (rename) a vault file from src to dst.
+
+    Implemented as get → put → delete since the API has no native move.
+
+    Args:
+        base_url: Obsidian server base URL.
+        api_key: Bearer token.
+        src: Current file path relative to vault root.
+        dst: New file path relative to vault root.
+
+    Returns:
+        Status dict with 'src' and 'dst' keys.
+
+    Raises:
+        RuntimeError: If source doesn't exist or destination already exists.
+    """
+    content_result = get(base_url, api_key, src, fmt="markdown")
+    content = content_result.get("content", "") if isinstance(content_result, dict) else str(content_result)
+
+    if exists(base_url, api_key, dst):
+        raise RuntimeError(f"Destination already exists: {dst}")
+
+    put(base_url, api_key, dst, content)
+    delete(base_url, api_key, src)
+    return {"status": "ok", "src": src, "dst": dst}
+
+
+def list_dir_recursive(base_url: str, api_key: str | None, path: str = "") -> list:
+    """Recursively list all files under a vault directory.
+
+    Args:
+        base_url: Obsidian server base URL.
+        api_key: Bearer token.
+        path: Directory path relative to vault root (empty = vault root).
+
+    Returns:
+        Flat list of all file paths (directories are traversed, not listed).
+    """
+    result = list_dir(base_url, api_key, path)
+    files_raw = result.get("files", result) if isinstance(result, dict) else result
+    if not isinstance(files_raw, list):
+        return []
+
+    all_files = []
+    for item in files_raw:
+        if item.endswith("/"):
+            sub_path = f"{path}/{item}".strip("/") if path else item.rstrip("/")
+            all_files.extend(list_dir_recursive(base_url, api_key, sub_path))
+        else:
+            full = f"{path}/{item}".strip("/") if path else item
+            all_files.append(full)
+    return all_files
+
+
+def get_heading(base_url: str, api_key: str | None, path: str,
+                heading: str, delimiter: str = "::") -> dict:
+    """Get the content under a specific heading in a vault file.
+
+    Uses the PATCH-style API with a GET on the heading target.
+    Falls back to fetching the full document and extracting the section.
+
+    Args:
+        base_url: Obsidian server base URL.
+        api_key: Bearer token.
+        path: File path relative to vault root.
+        heading: Heading name (use delimiter for nested, e.g. 'Parent::Child').
+        delimiter: Nested heading separator (default '::').
+
+    Returns:
+        Dict with 'content' key containing the section text.
+    """
+    encoded = encode_path(path)
+    from urllib.parse import quote as url_quote
+    target_encoded = url_quote(heading, safe="")
+    params = {
+        "heading": target_encoded,
+        "delimiter": delimiter,
+    }
+    return api_get(
+        base_url, f"/vault/{encoded}",
+        api_key=api_key,
+        accept="text/markdown",
+        params=params,
+    )

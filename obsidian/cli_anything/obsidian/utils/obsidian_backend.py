@@ -146,8 +146,9 @@ def api_get(base_url: str, endpoint: str, api_key: str | None = None,
         RuntimeError: On HTTP error or connection failure.
     """
     url = _url(base_url, endpoint)
-    auth_required = endpoint != "/"
-    if auth_required:
+    if api_key:
+        headers = _headers(api_key, accept=accept)
+    elif endpoint != "/":
         headers = _headers(api_key, accept=accept)
     else:
         # GET / is public — no Bearer token needed, but still send Accept header
