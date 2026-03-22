@@ -1,8 +1,8 @@
 {
   "meta": {
-    "repo": "https://github.com/HKUDS/CLI-Anything",
+    "repo": "https://github.com/Ianfr13/Douravita-cli",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-18"
+    "updated": "2026-03-22"
   },
   "clis": [
     {
@@ -254,6 +254,20 @@
       "category": "marketing",
       "contributor": "CLI-Anything-Team",
       "contributor_url": "https://github.com/HKUDS/CLI-Anything"
+    },
+    {
+      "name": "obsidian",
+      "display_name": "Obsidian",
+      "version": "1.0.0",
+      "description": "Read and write your Obsidian vault via the Local REST API plugin — active file, vault CRUD, periodic notes, full-text search, Dataview DQL, JsonLogic, tags, and command execution",
+      "requires": "Obsidian desktop app running + obsidian-local-rest-api plugin enabled + OBSIDIAN_API_KEY env var",
+      "homepage": "https://obsidian.md",
+      "install_cmd": "pip install git+https://github.com/Ianfr13/Douravita-cli.git#subdirectory=obsidian",
+      "entry_point": "cli-anything-obsidian",
+      "skill_md": "obsidian/cli_anything/obsidian/skills/SKILL.md",
+      "category": "notes",
+      "contributor": "Ianfr13",
+      "contributor_url": "https://github.com/Ianfr13"
     },
     {
       "name": "zoom",

@@ -1,6 +1,6 @@
 # Douravita CLI
 
-CLI wrappers for Infisical and Railway, built with the [cli-anything](https://github.com/Ianfr13/cli-anything) methodology.
+Agent-native CLI wrappers built with the [cli-anything](https://github.com/Ianfr13/cli-anything) methodology.
 
 ## CLIs
 
@@ -18,6 +18,17 @@ CLI wrapper for [Railway](https://railway.app) deployment platform.
 ```bash
 cd railway
 pip install -e .
+```
+
+### `cli-anything-obsidian`
+CLI wrapper for [Obsidian](https://obsidian.md) via the [Local REST API](https://coddingtonbear.github.io/obsidian-local-rest-api/) plugin.
+Read/write vault files, periodic notes, search, tags, and run commands — from the terminal or AI agents.
+
+```bash
+cd obsidian
+pip install -e .
+export OBSIDIAN_API_KEY="your-key-from-obsidian-settings"
+cli-anything-obsidian --help
 ```
 
 ## Usage

@@ -42,6 +42,7 @@
 !/ollama/
 !/google-tag-manager/
 !/redtrack/
+!/obsidian/
 
 # Step 5: Inside each software dir, ignore everything (including dotfiles)
 /gimp/*
