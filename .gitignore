@@ -132,3 +132,9 @@ assets/gen_typing_gif.py
 /notebooklm/*
 /notebooklm/.*
 !/notebooklm/agent-harness/
+
+# Douravita CLIs (flat structure, no agent-harness wrapper)
+!/langfuse/
+!/infisical/
+!/railway/
+!/meta-ads/

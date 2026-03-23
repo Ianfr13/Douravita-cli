@@ -2,7 +2,7 @@
   "meta": {
     "repo": "https://github.com/Ianfr13/Douravita-cli",
     "description": "CLI-Hub — Agent-native stateful CLI interfaces for softwares, codebases, and Web Services",
-    "updated": "2026-03-22"
+    "updated": "2026-03-23"
   },
   "clis": [
     {
@@ -282,6 +282,20 @@
       "category": "communication",
       "contributor": "zhangxilong-43",
       "contributor_url": "https://github.com/zhangxilong-43"
+    },
+    {
+      "name": "langfuse",
+      "display_name": "Langfuse",
+      "version": "1.0.0",
+      "description": "LLM observability platform — manage traces, observations, scores, prompts, datasets, sessions, models, and metrics via Langfuse REST API",
+      "requires": "LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY env vars (from cloud.langfuse.com or self-hosted)",
+      "homepage": "https://langfuse.com",
+      "install_cmd": "pip install git+https://github.com/Ianfr13/Douravita-cli.git#subdirectory=langfuse",
+      "entry_point": "cli-anything-langfuse",
+      "skill_md": "langfuse/cli_anything/langfuse/skills/SKILL.md",
+      "category": "observability",
+      "contributor": "Ianfr13",
+      "contributor_url": "https://github.com/Ianfr13"
     }
   ]
 }
