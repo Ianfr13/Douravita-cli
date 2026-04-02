@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_DIR/skills/project-architect/scripts/enforce-deep-scan.sh\"",
+            "statusMessage": "Verificando Deep Scan..."
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PLUGIN_DIR/skills/project-architect/scripts/enforce-deep-scan.sh\"",
+            "statusMessage": "Verificando Deep Scan..."
+          }
+        ]
+      }
+    ]
+  }
+}

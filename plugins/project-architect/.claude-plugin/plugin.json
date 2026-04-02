@@ -1,0 +1,13 @@
+{
+  "name": "project-architect",
+  "description": "Configura projetos do zero ao fim — devcontainer, Infisical, GitHub, CLAUDE.md, CONTEXT.md, skills, CLIs. Audita e corrige estruturas existentes. Deep Scan spec-driven com subagentes isolados.",
+  "version": "2.0.0",
+  "author": {
+    "name": "Ian Francio",
+    "email": "ian@douravita.com.br"
+  },
+  "homepage": "https://github.com/Ianfr13/Douravita-cli",
+  "repository": "https://github.com/Ianfr13/Douravita-cli",
+  "license": "MIT",
+  "keywords": ["project-setup", "devcontainer", "infisical", "architecture", "audit", "onboarding"]
+}

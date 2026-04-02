@@ -1,0 +1,19 @@
+{
+  "name": "douravita-plugins",
+  "owner": {
+    "name": "Douravita",
+    "email": "ian@douravita.com.br"
+  },
+  "metadata": {
+    "description": "Plugins do workflow Douravita — project architect, CLIs, automações",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "project-architect",
+      "source": "./plugins/project-architect",
+      "description": "Setup completo de projetos — 6 modos (INSTALL, BUILD, FORK, MIGRATION, UPDATE, AUDIT). Deep Scan spec-driven com subagentes, Context7, hooks.",
+      "version": "2.0.0"
+    }
+  ]
+}
