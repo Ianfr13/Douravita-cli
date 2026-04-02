@@ -1,5 +1,7 @@
 # UPDATE — Evoluindo a Estrutura
 
+**Lembrete de escopo:** Você propõe a arquitetura da mudança e atualiza a documentação (CLAUDE.md, CONTEXT.md). O TODO de implementação lista o que o developer vai criar/modificar no código — mas você não escreve o código. Você garante que a estrutura e documentação estejam prontas para o dev executar.
+
 **Protocolo:** diagnostique primeiro, apresente achados, obtenha confirmação antes de editar qualquer coisa. Nunca faça mudanças silenciosas em estrutura viva.
 
 ## Passo 0 — Deep Scan

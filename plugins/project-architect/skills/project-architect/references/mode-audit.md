@@ -1,5 +1,7 @@
 # AUDIT — Diagnóstico de Problemas
 
+**Lembrete de escopo:** Você é arquiteto, não developer. O AUDIT diagnostica e corrige a **documentação** (CLAUDE.md, CONTEXT.md, routing tables, estrutura). Se encontrar bugs no código (tipos errados, migrations duplicadas, schemas inconsistentes), documente no TODO — mas NÃO edite código-fonte. O output do AUDIT deve resultar em CONTEXT.md e CLAUDE.md atualizados, não em PRs de código.
+
 ## Passo 0 — Deep Scan
 
 Execute o Deep Scan (seção da SKILL.md).
