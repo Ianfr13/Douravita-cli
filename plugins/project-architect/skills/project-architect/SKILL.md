@@ -1,6 +1,6 @@
 ---
 name: project-architect
-description: "Configura projetos Douravita do zero ao fim — devcontainer, Infisical, GitHub repo, CLAUDE.md com routing table, CONTEXT.md por workspace e seleção de skills e CLIs. Também audita e corrige estruturas existentes. Use esta skill para QUALQUER projeto novo, fork de repo externo, migração de projeto existente, atualização de estrutura, diagnóstico ou auditoria. Ativa quando o usuário diz: 'criar projeto', 'novo projeto', 'setup do projeto', 'fazer fork', 'clonar repo', 'adaptar repo', 'adicionar devcontainer', 'configurar Infisical', 'estruturar para Claude', 'montar workspaces', 'reorganizar projeto', 'projeto do zero', 'meu CLAUDE.md está longo', 'Claude perdeu o contexto', 'estrutura certa?', 'auditar projeto', ou qualquer vez que um repositório novo ou existente precisa ser configurado ou corrigido para o workflow Douravita. Em caso de dúvida sobre se aplica, use."
+description: "Configura projetos Douravita do zero ao fim — devcontainer, Infisical, GitHub repo, CLAUDE.md com routing table, CONTEXT.md por workspace e seleção de skills e CLIs. Também audita e corrige estruturas existentes, incluindo verificação de segurança (secrets expostos, vulnerabilidades de código, validação de input, auth gaps). Use esta skill para QUALQUER projeto novo, fork de repo externo, migração de projeto existente, atualização de estrutura, diagnóstico, auditoria ou revisão de segurança. Ativa quando o usuário diz: 'criar projeto', 'novo projeto', 'setup do projeto', 'fazer fork', 'clonar repo', 'adaptar repo', 'adicionar devcontainer', 'configurar Infisical', 'estruturar para Claude', 'montar workspaces', 'reorganizar projeto', 'projeto do zero', 'meu CLAUDE.md está longo', 'Claude perdeu o contexto', 'estrutura certa?', 'auditar projeto', 'verificar segurança', 'secrets expostos?', 'tem vulnerabilidade?', ou qualquer vez que um repositório novo ou existente precisa ser configurado, corrigido ou auditado para segurança no workflow Douravita. Em caso de dúvida sobre se aplica, use."
 ---
 
 # Project Architect
@@ -17,7 +17,7 @@ Você é o arquiteto de projetos Douravita. Configura a estrutura completa de qu
 - Documentação do repo — READMEs, docs de referência
 - Configuração de projeto — .gitignore, infisical, GitHub
 
-**Você NÃO mexe em código-fonte.** Se o scan encontrar bugs, tipos errados, migrations duplicadas, schemas inconsistentes — documente no TODO checklist do output. O developer corrige em outra sessão. Seu trabalho é garantir que a documentação reflita o estado real do código e que o próximo dev que abrir o projeto saiba exatamente o que existe, o que funciona e o que está quebrado.
+**Você NÃO mexe em código-fonte.** Se o scan encontrar bugs, tipos errados, migrations duplicadas, schemas inconsistentes ou vulnerabilidades de segurança — documente no TODO checklist do output. O developer corrige em outra sessão. Seu trabalho é garantir que a documentação reflita o estado real do código e que o próximo dev que abrir o projeto saiba exatamente o que existe, o que funciona, o que está quebrado e **o que está inseguro**.
 
 ## O Stack Douravita
 
@@ -59,8 +59,8 @@ Skills em **pares**: research produz artefato → `/clear` → execução consom
 | **BUILD** | Projeto novo do zero | `references/mode-build.md` |
 | **FORK** | Adaptar repo externo | `references/mode-fork.md` |
 | **MIGRATION** | Projeto existente sem estrutura | `references/mode-migration.md` |
-| **UPDATE** | Estrutura que cresceu | `references/mode-update.md` |
-| **AUDIT** | Algo errado ou inconsistente | `references/mode-audit.md` |
+| **UPDATE** | Estrutura que cresceu (inclui check de segurança) | `references/mode-update.md` |
+| **AUDIT** | Algo errado, inconsistente ou inseguro | `references/mode-audit.md` |
 
 **Detecção de modo:**
 1. "instalar", "setup da máquina", "onboarding" → **INSTALL**
@@ -68,7 +68,7 @@ Skills em **pares**: research produz artefato → `/clear` → execução consom
 3. "fork", "clonar", "adaptar repo" → **FORK**
 4. Repo existe + sem `CLAUDE.md` → **MIGRATION**
 5. Repo + `CLAUDE.md` + "adicionar", "expandir" → **UPDATE**
-6. Algo errado, inconsistente, "Claude ficou pior" → **AUDIT**
+6. Algo errado, inconsistente, inseguro, "Claude ficou pior", "verificar segurança" → **AUDIT**
 
 Se ambíguo, pergunte.
 
@@ -213,9 +213,9 @@ Entre cada skill, `/clear` para contexto limpo.
 
 ## Após Diagnosticar ou Gerar
 
-1. **Atualize CLAUDE.md e CONTEXT.md** — esse é o seu deliverable principal. Escreva o conteúdo real, não só descreva o que mudar.
-2. **Gere o TODO checklist** — bugs de código, schemas, tipos vão aqui como TODOs para o developer. Você não edita código.
+1. **Atualize CLAUDE.md e TODOS os CONTEXT.md** — esse é o seu deliverable principal. Escreva o conteúdo real, não só descreva o que mudar. **Atualize o `Last updated: [YYYY-MM-DD]` de cada CONTEXT.md que editar** — use a data de hoje. Se um CONTEXT.md não tem `Last updated:`, adicione logo abaixo do título.
+2. **Gere o TODO checklist** — bugs de código, schemas, tipos, segurança vão aqui como TODOs para o developer. Você não edita código.
 3. **Execute o checklist de verificação** — rode comandos de infra (devcontainer, git, infisical).
 4. **Dê o próximo passo** — uma ação concreta. Ex: "CONTEXT.md atualizados. Próximo: abra uma sessão nova e execute os TODOs de código."
 
-**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, e o que precisa ser feito.
+**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, o que precisa ser feito e **o que está inseguro**.

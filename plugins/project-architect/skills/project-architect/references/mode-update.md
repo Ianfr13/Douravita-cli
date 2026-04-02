@@ -21,6 +21,29 @@ Execute a Consulta de Stack (seção da SKILL.md) para as libs envolvidas na mud
 5. **CLAUDE.md ainda cabe em uma tela?** O crescimento costuma infiltrar conteúdo no CLAUDE.md. Apare o que pertence ao CONTEXT.md.
 6. **Boundaries ainda fazem sentido?** Dois workspaces que na prática viraram um? Um workspace que cresceu e precisa dividir?
 
+## Passo 1.5 — Verificação de segurança
+
+A cada UPDATE, rode uma verificação rápida de segurança nas áreas impactadas pela mudança. O objetivo não é um audit completo — é garantir que a mudança proposta não introduza (ou perpetue) riscos óbvios.
+
+**Secrets:**
+```bash
+# .env commitados
+git ls-files '*.env*' 2>/dev/null
+# Secrets hardcoded nas áreas afetadas
+grep -rn -E '(password|secret|token|apikey|api_key|private_key)\s*[:=]\s*["\x27][^"\x27]{8,}' [paths-afetados] --exclude-dir=node_modules --exclude-dir=.git || true
+# .gitignore cobre o básico
+for p in '.env*' '*.pem' '*.key'; do grep -q "$p" .gitignore 2>/dev/null && echo "OK: $p" || echo "FALTA: $p"; done
+```
+
+**Código (nas áreas da mudança):**
+- Novos endpoints/handlers → têm auth? Têm validação de input?
+- Novas queries/operações de banco → são parametrizadas?
+- Novo input de usuário → é sanitizado antes de usar em HTML/SQL/shell/paths?
+- Novas dependências → são mantidas e sem CVEs conhecidas?
+- Novos logs → incluem dados sensíveis?
+
+Se encontrar riscos, adicione-os na seção SEGURANÇA do TODO (Parte 3). A mudança proposta deve resolver ou ao menos não agravar problemas de segurança existentes.
+
 ## Formato do Output
 
 O output do UPDATE deve ter:
@@ -50,8 +73,11 @@ O output do UPDATE deve ter:
 - [ ] `path/to/config.json` — Adicionar binding/rota/etc
 
 ### Documentar
-- [ ] `CONTEXT.md` — Adicionar seção descrevendo a nova feature
+- [ ] **Todos** os `CONTEXT.md` afetados — Adicionar seção descrevendo a nova feature + atualizar `Last updated: [YYYY-MM-DD]`
 - [ ] `CLAUDE.md` — Atualizar routing table se necessário
+
+### Segurança
+- [ ] `path/to/file.ts:NN` — [risco encontrado + sugestão de correção]
 
 ### Verificar
 - [ ] Testar end-to-end: [descrever o fluxo de teste]
@@ -59,5 +85,9 @@ O output do UPDATE deve ter:
 ```
 
 Cada TODO deve ser executável sem reler a proposta. Aguarde confirmação do usuário antes de executar.
+
+### Parte 4 — Sugestões de skills (se aplicável)
+
+Se a mudança introduz um domínio novo ou workflow repetitivo, sugira skills. Leia `references/skill-suggestions.md` para o formato e critérios. Só inclua esta parte se houver sugestão concreta — não force.
 
 Princípio: mude só o que precisa. Edições cirúrgicas.

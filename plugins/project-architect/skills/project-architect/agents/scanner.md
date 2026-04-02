@@ -158,8 +158,67 @@ Copie verbatim os types/interfaces que são usados em mais de um lugar ou que de
 
 - Código morto, imports quebrados, TODO/FIXME
 - Inconsistências (ex: tipo diz X, código faz Y)
-- Gaps de segurança (validação faltando, secrets hardcoded)
 - Se não encontrou nada: "Nenhum problema evidente."
+
+### O. Segurança
+
+Escaneie a codebase inteira procurando riscos de segurança. Relate **fatos** — o agente principal decide severidade e correção.
+
+**O.1 — Secrets expostos**
+
+Procure em todos os arquivos (incluindo configs, scripts, CI, Docker):
+- Strings que parecem API keys, tokens, passwords, connection strings (padrões: `sk-`, `ghp_`, `AKIA`, `Bearer `, `-----BEGIN`, base64 longo em atribuição)
+- Arquivos `.env`, `.env.*` commitados no repositório (verifique com `git ls-files '*.env*'`)
+- Secrets em variáveis hardcoded: `password = "..."`, `secret = "..."`, `token = "..."`, `apiKey = "..."`
+- Secrets em URLs: `postgres://user:pass@host`, `redis://:pass@host`, `https://user:pass@`
+- Secrets em logs: chamadas de log/print que incluem variáveis sensíveis
+- `.gitignore` faltando patterns para: `.env*`, `*.pem`, `*.key`, `credentials.*`, `serviceaccount*.json`
+
+Relate cada achado com arquivo:linha e o valor parcial (primeiros 4 chars + `***`). Nunca copie o secret inteiro.
+
+**O.2 — Validação de input**
+
+Para cada entry point (endpoint HTTP, handler de fila, CLI command, webhook):
+- Tem validação formal (Zod, Joi, pydantic, JSON Schema, etc.)?
+- Ou cast manual sem validação runtime?
+- Input do usuário é usado em: queries SQL (injection?), HTML (XSS?), shell commands (command injection?), file paths (path traversal?), regex (ReDoS?)?
+- Se parametrizado/escapado, como?
+
+Relate: `[endpoint/handler] — validação: [sim/não/parcial] — riscos: [lista]`
+
+**O.3 — Autenticação e autorização**
+
+- Endpoints ou handlers sem nenhum auth check (público por acidente?)
+- Auth bypass possível (verificação em middleware mas handler acessível direto?)
+- Tokens/sessions sem expiração configurada
+- Permissões verificadas no nível certo (ex: verifica se está logado, mas não se é dono do recurso)
+- CORS: `Access-Control-Allow-Origin: *` ou origens permissivas demais
+
+Relate: `[endpoint] — auth: [mecanismo ou "nenhum"] — authz: [como verifica permissão ou "não verifica"]`
+
+**O.4 — Exposição de informação**
+
+- Stack traces ou erros internos retornados ao client em produção
+- Headers que vazam info (X-Powered-By, Server version)
+- Debug/admin endpoints sem proteção
+- Logs que gravam PII ou dados sensíveis sem mascarar
+
+**O.5 — Dependências**
+
+- Libs com CVEs conhecidas (se `package.json`/`requirements.txt`/`go.mod` existir, note versões significativamente antigas)
+- Libs abandonadas (sem release há >2 anos)
+- Uso de `eval()`, `exec()`, `Function()`, `child_process.exec()` com input dinâmico
+- Imports de URLs externas sem pinning de versão
+
+**O.6 — Infra e deploy**
+
+- Dockerfiles rodando como root sem necessidade
+- Portas expostas desnecessariamente
+- Configs de prod com debug habilitado
+- HTTPS não forçado onde deveria
+- Permissões de arquivo/diretório abertas demais (777, world-readable em secrets)
+
+Se não encontrou problemas numa subcategoria, diga: "O.X — Nenhum risco identificado."
 
 ---
 

@@ -59,6 +59,66 @@ Verifique em ordem. Para cada erro: reporte o que está errado, por que importa 
 - Lib X sem release há >1 ano → alternativa Z resolve o mesmo caso
 **Fix:** liste trocas sugeridas com impacto e esforço. Não force — apresente como recomendação.
 
+---
+
+## Erros de Segurança
+
+O Deep Scan (categoria O) coleta os fatos. Aqui você interpreta e classifica.
+
+**Erro 9 — Secrets expostos ou mal protegidos**
+**Flag se:** qualquer item em O.1 do scan retornou achados.
+**Por que importa:** um secret vazado compromete todo o sistema — não importa quão bom é o resto da arquitetura. É o erro mais crítico que existe.
+**Checklist de verificação (rode os comandos):**
+
+```bash
+# Arquivos .env commitados no git
+git ls-files '*.env*' 2>/dev/null
+
+# Chaves privadas no repo
+git ls-files '*.pem' '*.key' '*.p12' '*.pfx' '*.jks' 2>/dev/null
+
+# Patterns de secrets hardcoded (genérico, qualquer stack)
+grep -rn --include='*.ts' --include='*.js' --include='*.py' --include='*.go' --include='*.rb' --include='*.java' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' \
+  -E '(password|secret|token|apikey|api_key|private_key)\s*[:=]\s*["\x27][^"\x27]{8,}' \
+  --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor --exclude-dir=dist . || true
+
+# .gitignore cobre secrets?
+for pattern in '.env*' '*.pem' '*.key' 'credentials*' 'serviceaccount*'; do
+  grep -q "$pattern" .gitignore 2>/dev/null && echo "OK: $pattern no .gitignore" || echo "FALTANDO: $pattern no .gitignore"
+done
+```
+
+**Severidade:**
+- Secret hardcoded em código-fonte → CRÍTICO
+- `.env` commitado com valores reais → CRÍTICO
+- `.gitignore` sem patterns de secrets → ALTO
+- Secret em log/print → ALTO
+- Secret em URL de config → MÉDIO (se o repo é privado)
+
+**Fix:** documente no TODO com ação exata — ex: "mover `API_KEY` em `src/config.ts:12` para variável de ambiente" ou "adicionar `.env*` ao `.gitignore` e rodar `git rm --cached .env`".
+
+**Erro 10 — Vulnerabilidades de código**
+**Flag se:** qualquer item em O.2 a O.6 do scan retornou achados.
+**Por que importa:** input sem validação é a porta de entrada de injection attacks. Auth fraca permite acesso não autorizado. Cada gap é uma superfície de ataque.
+
+**O que verificar (a partir dos achados do scan):**
+
+| Categoria | O que procurar | Severidade base |
+|-----------|---------------|-----------------|
+| Injection | SQL sem parameterize, HTML sem escape, shell com input dinâmico, path traversal | CRÍTICO |
+| Auth gaps | Endpoints sem auth, auth bypass, sem expiração de token | CRÍTICO |
+| Authz gaps | Verifica login mas não ownership do recurso | ALTO |
+| CORS | `Access-Control-Allow-Origin: *` em API com auth | ALTO |
+| Info leak | Stack traces em prod, PII em logs, debug endpoints expostos | MÉDIO |
+| Deps | Libs com CVEs conhecidas, `eval()`/`exec()` com input dinâmico | ALTO |
+| Infra | Container como root, debug em prod, HTTPS não forçado | MÉDIO |
+
+**Fix:** cada achado vira item no TODO com:
+- Arquivo:linha exato
+- O que está errado (fato, não opinião)
+- Sugestão de correção genérica (ex: "usar parameterized query" — não reescreva o código)
+- Severidade
+
 ## Verificações Douravita
 
 Execute e reporte:
@@ -69,9 +129,21 @@ grep "YOUR_PROJECT_ID" .devcontainer/devcontainer.json 2>/dev/null && echo "PEND
 git remote -v
 ```
 
+## Após o diagnóstico — Atualizar CONTEXT.md
+
+**Independente do que o diagnóstico encontrou**, ao final de todo AUDIT você deve:
+
+1. **Abrir cada CONTEXT.md do projeto**
+2. **Atualizar `Last updated: [YYYY-MM-DD]`** com a data de hoje — mesmo que o conteúdo esteja correto, um audit é um evento que justifica o timestamp
+3. Se não existir `Last updated:`, adicionar logo abaixo do título
+4. Se o Erro 5 encontrou itens desatualizados, corrigir o conteúdo também
+5. Incluir no CONTEXT.md do workspace relevante um resumo dos achados de segurança (como seção "Postura de Segurança" ou similar)
+
+O `Last updated:` é um contrato com o próximo dev — ele precisa saber quando o documento foi revisado pela última vez, não só quando foi criado.
+
 ## Formato do Output
 
-O output DEVE ter estas 3 partes nesta ordem:
+O output DEVE ter estas 4 partes nesta ordem:
 
 ### Parte 1 — Diagnóstico (o que está errado)
 
@@ -87,6 +159,7 @@ Resume o estado real da codebase. Inclua:
 - Data Stores (schemas DB, cache keys + value shapes, queue messages)
 - Regras de negócio críticas
 - Conexões entre workspaces
+- **Postura de segurança** — resumo dos achados da categoria O do scan: como secrets são gerenciados, onde há validação de input, quais endpoints têm auth e quais não, superfície de ataque geral
 
 Serve como referência para quem for corrigir — não precisa reler o código.
 
@@ -108,6 +181,13 @@ Lista priorizada de ações concretas:
 ### MÉDIO
 - [ ] Ambos CONTEXT.md — Atualizar `Last updated` para data de hoje
 
+### SEGURANÇA
+- [ ] `src/config.ts:12` — Mover `API_KEY` hardcoded para variável de ambiente
+- [ ] `.gitignore` — Adicionar `.env*`, `*.pem`, `*.key`, `credentials*`
+- [ ] `src/api/users.ts:34` — Adicionar validação de input (SQL injection possível via `req.query.id`)
+- [ ] `src/auth/middleware.ts:8` — Endpoint `/admin/debug` sem auth check
+- [ ] `workers/api/src/index.ts:15` — CORS `*` em API autenticada, restringir origens
+
 ### RECOMENDADO (libs/patterns)
 - [ ] Avaliar migração de X para Y (Context7 mostrou que...)
 ```
@@ -115,3 +195,7 @@ Lista priorizada de ações concretas:
 Cada TODO deve ser específico para executar sem reler o diagnóstico.
 
 Se o AUDIT encontrar CONTEXT.md muito desatualizado (Erro 5 com mais de 5 itens faltando), gere também um **rascunho do CONTEXT.md corrigido** como proposta.
+
+### Parte 4 — Sugestões de skills
+
+Baseado no scan completo, sugira skills que fariam diferença neste projeto. Leia `references/skill-suggestions.md` para o formato e critérios. Cada sugestão deve ser acionável via `/skill-creator`.
