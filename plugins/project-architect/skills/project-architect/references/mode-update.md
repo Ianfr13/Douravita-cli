@@ -90,4 +90,15 @@ Cada TODO deve ser executável sem reler a proposta. Aguarde confirmação do us
 
 Se a mudança introduz um domínio novo ou workflow repetitivo, sugira skills. Leia `references/skill-suggestions.md` para o formato e critérios. Só inclua esta parte se houver sugestão concreta — não force.
 
+---
+
+### Salvar outputs em arquivo
+
+Após gerar as partes, salve em arquivos na raiz do projeto:
+
+1. **`TODO.md`** — conteúdo da Parte 3 (TODO checklist). Se já existir, substitua.
+2. **`skill-suggestions.md`** — conteúdo da Parte 4, se gerada. Se já existir, substitua.
+
+O output no chat é efêmero — se não salvar em arquivo, o developer perde o handoff. Confirme ao usuário que os arquivos foram salvos.
+
 Princípio: mude só o que precisa. Edições cirúrgicas.

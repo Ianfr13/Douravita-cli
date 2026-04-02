@@ -196,6 +196,17 @@ Cada TODO deve ser específico para executar sem reler o diagnóstico.
 
 Se o AUDIT encontrar CONTEXT.md muito desatualizado (Erro 5 com mais de 5 itens faltando), gere também um **rascunho do CONTEXT.md corrigido** como proposta.
 
-### Parte 4 — Sugestões de skills
+### Parte 4 — Sugestões de skills (OBRIGATÓRIO no AUDIT)
 
-Baseado no scan completo, sugira skills que fariam diferença neste projeto. Leia `references/skill-suggestions.md` para o formato e critérios. Cada sugestão deve ser acionável via `/skill-creator`.
+Baseado no scan completo, sugira skills que fariam diferença neste projeto. Leia `references/skill-suggestions.md` para o formato e critérios. Cada sugestão deve ser acionável via `/skill-creator`. No AUDIT, esta parte nunca é opcional — o scan completo dá visibilidade para identificar gaps que skills resolvem.
+
+---
+
+### Salvar outputs em arquivo
+
+Após gerar as 4 partes, salve em arquivos na raiz do projeto:
+
+1. **`TODO.md`** — conteúdo da Parte 3 (TODO checklist). Se já existir, substitua.
+2. **`skill-suggestions.md`** — conteúdo da Parte 4 (sugestões de skills). Se já existir, substitua.
+
+O output no chat é efêmero — se não salvar em arquivo, o developer perde o handoff. Confirme ao usuário que os arquivos foram salvos.

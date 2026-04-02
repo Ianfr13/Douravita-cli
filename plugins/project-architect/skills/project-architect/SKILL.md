@@ -214,8 +214,20 @@ Entre cada skill, `/clear` para contexto limpo.
 ## Após Diagnosticar ou Gerar
 
 1. **Atualize CLAUDE.md e TODOS os CONTEXT.md** — esse é o seu deliverable principal. Escreva o conteúdo real, não só descreva o que mudar. **Atualize o `Last updated: [YYYY-MM-DD]` de cada CONTEXT.md que editar** — use a data de hoje. Se um CONTEXT.md não tem `Last updated:`, adicione logo abaixo do título.
-2. **Gere o TODO checklist** — bugs de código, schemas, tipos, segurança vão aqui como TODOs para o developer. Você não edita código.
-3. **Execute o checklist de verificação** — rode comandos de infra (devcontainer, git, infisical).
-4. **Dê o próximo passo** — uma ação concreta. Ex: "CONTEXT.md atualizados. Próximo: abra uma sessão nova e execute os TODOs de código."
+2. **Salve o TODO checklist em `TODO.md` na raiz do projeto** — bugs de código, schemas, tipos, segurança vão aqui como TODOs para o developer. Você não edita código. Se o arquivo já existir, substitua o conteúdo. O TODO é o handoff para a próxima sessão — se não estiver em arquivo, o developer perde.
+3. **Salve as sugestões de skills em `skill-suggestions.md` na raiz do projeto** — se o modo gerou sugestões (Parte 4), salve em arquivo separado. O developer usa isso como input para `/skill-creator`. Se não há sugestões, não crie o arquivo.
+4. **Execute o checklist de verificação** — rode comandos de infra (devcontainer, git, infisical).
+5. **Dê o próximo passo** — uma ação concreta. Ex: "CONTEXT.md atualizados. TODO.md e skill-suggestions.md salvos. Próximo: abra uma sessão nova e execute os TODOs de código."
 
-**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, o que precisa ser feito e **o que está inseguro**.
+### Deliverables — Arquivos que você CRIA ou ATUALIZA
+
+| Arquivo | Quando | Conteúdo |
+|---------|--------|----------|
+| `CLAUDE.md` | Sempre | Routing table, workspaces, stack |
+| `*/CONTEXT.md` | Sempre | Estado real de cada workspace |
+| `TODO.md` | Sempre (exceto BUILD sem código existente) | Checklist de correções priorizadas |
+| `skill-suggestions.md` | AUDIT e MIGRATION sempre. UPDATE se aplicável | Sugestões acionáveis via `/skill-creator` |
+
+Se você não salvou esses arquivos, o trabalho não está completo.
+
+**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? TODO.md e skill-suggestions.md estão salvos como arquivos? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, o que precisa ser feito e **o que está inseguro**.
