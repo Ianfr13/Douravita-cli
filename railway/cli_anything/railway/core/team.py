@@ -1,4 +1,4 @@
-"""Team / Members commands for cli-anything-railway."""
+"""Workspace members commands for cli-anything-railway."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ _ROLES = ("ADMIN", "MEMBER")
 
 @click.group("team")
 def team_group():
-    """Manage Railway team members."""
+    """Manage Railway workspace members."""
 
 
 @team_group.command("list")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
 def team_list(ctx: click.Context, as_json: bool):
-    """List team members across all teams."""
+    """List workspace members."""
     backend: RailwayBackend = ctx.obj["backend"]
     skin = ctx.obj["skin"]
     try:
@@ -35,14 +35,14 @@ def team_list(ctx: click.Context, as_json: bool):
         return
 
     if not members:
-        skin.info("No team members found.")
+        skin.info("No workspace members found.")
         return
 
     skin.table(
-        ["Team", "User ID", "Email", "Role"],
+        ["Workspace", "User ID", "Email", "Role"],
         [
             [
-                m.get("teamName", ""),
+                m.get("workspaceName", ""),
                 m.get("id", ""),
                 m.get("email", ""),
                 m.get("role", ""),
@@ -54,7 +54,7 @@ def team_list(ctx: click.Context, as_json: bool):
 
 @team_group.command("invite")
 @click.argument("email")
-@click.option("--team", "team_id", required=True, help="Team ID.")
+@click.option("--team", "team_id", required=True, help="Workspace ID.")
 @click.option(
     "--role",
     default="MEMBER",
@@ -67,7 +67,7 @@ def team_list(ctx: click.Context, as_json: bool):
 def team_invite(
     ctx: click.Context, email: str, team_id: str, role: str, as_json: bool
 ):
-    """Invite a member to a team."""
+    """Invite a member to a workspace."""
     backend: RailwayBackend = ctx.obj["backend"]
     skin = ctx.obj["skin"]
     try:
@@ -88,11 +88,11 @@ def team_invite(
 
 @team_group.command("remove")
 @click.argument("user_id")
-@click.option("--team", "team_id", required=True, help="Team ID.")
+@click.option("--team", "team_id", required=True, help="Workspace ID.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
 def team_remove(ctx: click.Context, user_id: str, team_id: str, as_json: bool):
-    """Remove a member from a team."""
+    """Remove a member from a workspace."""
     backend: RailwayBackend = ctx.obj["backend"]
     skin = ctx.obj["skin"]
     try:
@@ -106,6 +106,6 @@ def team_remove(ctx: click.Context, user_id: str, team_id: str, as_json: bool):
         return
 
     if result:
-        skin.success(f"User {user_id} removed from team.")
+        skin.success(f"User {user_id} removed from workspace.")
     else:
         skin.warning(f"Remove returned false for user {user_id}.")

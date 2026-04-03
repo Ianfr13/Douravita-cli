@@ -16,15 +16,15 @@ def networking_group():
 
 
 @networking_group.command("list")
-@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
-def networking_list(ctx: click.Context, project_id: str, as_json: bool):
-    """List private network endpoints (internal domains) in a project."""
+def networking_list(ctx: click.Context, environment_id: str, as_json: bool):
+    """List private network endpoints for an environment."""
     backend: RailwayBackend = ctx.obj["backend"]
     skin = ctx.obj["skin"]
     try:
-        endpoints = backend.networking_list(project_id)
+        endpoints = backend.networking_list(environment_id)
     except RailwayAPIError as exc:
         skin.error(str(exc))
         sys.exit(1)
@@ -38,12 +38,13 @@ def networking_list(ctx: click.Context, project_id: str, as_json: bool):
         return
 
     skin.table(
-        ["Service", "Internal Domain", "Domain ID"],
+        ["Name", "DNS Name", "Network ID", "Created"],
         [
             [
-                e.get("serviceName", ""),
-                e.get("internalDomain", ""),
-                e.get("id", ""),
+                e.get("name", ""),
+                e.get("dnsName", ""),
+                e.get("networkId", ""),
+                (e.get("createdAt") or "")[:19],
             ]
             for e in endpoints
         ],

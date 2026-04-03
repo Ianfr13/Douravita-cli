@@ -133,3 +133,78 @@ def deployments_rollback(ctx: click.Context, deployment_id: str, as_json: bool):
         skin.success(f"Rolled back to deployment {deployment_id}.")
     else:
         skin.warning("Rollback returned false — check Railway dashboard.")
+
+
+@deployments_group.command("restart")
+@click.argument("deployment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_restart(ctx: click.Context, deployment_id: str, as_json: bool):
+    """Restart a deployment without rebuilding."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_restart(deployment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"restarted": result, "deploymentId": deployment_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Deployment {deployment_id} restarted.")
+    else:
+        skin.warning("Restart returned false — check Railway dashboard.")
+
+
+@deployments_group.command("cancel")
+@click.argument("deployment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_cancel(ctx: click.Context, deployment_id: str, as_json: bool):
+    """Cancel an in-progress deployment."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_cancel(deployment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"cancelled": result, "deploymentId": deployment_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Deployment {deployment_id} cancelled.")
+    else:
+        skin.warning("Cancel returned false — deployment may have already completed.")
+
+
+@deployments_group.command("stop")
+@click.argument("service_id")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_stop(
+    ctx: click.Context, service_id: str, environment_id: str, as_json: bool
+):
+    """Stop the active deployment for a service in an environment."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_stop(service_id, environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"stopped": result, "serviceId": service_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Deployment stopped for service {service_id}.")
+    else:
+        skin.warning("Stop returned false — check Railway dashboard.")

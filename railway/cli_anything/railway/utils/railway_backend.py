@@ -523,21 +523,38 @@ class RailwayBackend:
     # Metrics
     # ------------------------------------------------------------------
 
-    def service_metrics(self, service_id: str, environment_id: str) -> dict:
+    def service_metrics(
+        self,
+        service_id: str,
+        environment_id: str,
+        start_date: str | None = None,
+    ) -> list[dict]:
+        if not start_date:
+            from datetime import datetime, timedelta, timezone
+            start_date = (datetime.now(timezone.utc) - timedelta(hours=6)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
         data = self.query(
             """
-            query GetServiceMetrics($serviceId: String!, $environmentId: String!) {
-                serviceMetrics(serviceId: $serviceId, environmentId: $environmentId) {
-                    cpuPercentage
-                    memoryUsageBytes
-                    networkRxBytes
-                    networkTxBytes
-                }
+            query GetMetrics(
+                $serviceId: String!, $environmentId: String!, $startDate: DateTime!
+            ) {
+                metrics(
+                    measurements: [CPU_USAGE, MEMORY_USAGE_GB, NETWORK_RX_GB, NETWORK_TX_GB],
+                    serviceId: $serviceId,
+                    environmentId: $environmentId,
+                    startDate: $startDate,
+                    sampleRateSeconds: 3600
+                ) { measurement values { ts value } }
             }
             """,
-            {"serviceId": service_id, "environmentId": environment_id},
+            {
+                "serviceId": service_id,
+                "environmentId": environment_id,
+                "startDate": start_date,
+            },
         )
-        return data.get("serviceMetrics") or {}
+        return data.get("metrics") or []
 
     # ------------------------------------------------------------------
     # Templates
@@ -642,22 +659,18 @@ class RailwayBackend:
         data = self.query(
             """
             query GetTcpProxies($serviceId: String!, $environmentId: String!) {
-                serviceInstance(serviceId: $serviceId, environmentId: $environmentId) {
-                    tcpProxies {
-                        edges {
-                            node { id applicationPort proxyPort domain }
-                        }
-                    }
+                tcpProxies(serviceId: $serviceId, environmentId: $environmentId) {
+                    id
+                    applicationPort
+                    proxyPort
+                    domain
+                    createdAt
                 }
             }
             """,
             {"serviceId": service_id, "environmentId": environment_id},
         )
-        instance = data.get("serviceInstance") or {}
-        return [
-            edge["node"]
-            for edge in (instance.get("tcpProxies") or {}).get("edges", [])
-        ]
+        return data.get("tcpProxies") or []
 
     def tcp_proxy_create(
         self, service_id: str, environment_id: str, application_port: int
@@ -746,66 +759,60 @@ class RailwayBackend:
     # ------------------------------------------------------------------
 
     def team_list(self) -> list[dict]:
-        """Return a list of teams with their members."""
+        """Return workspace members (replaces deprecated teams API)."""
         data = self.query(
             """
             query {
                 me {
-                    teams {
-                        edges {
-                            node {
-                                id
-                                name
-                                members {
-                                    edges {
-                                        node { id email role }
-                                    }
-                                }
-                            }
-                        }
+                    workspaces {
+                        id
+                        name
+                        members { id email role }
                     }
                 }
             }
             """
         )
         me = data.get("me") or {}
-        teams = [
-            edge["node"]
-            for edge in (me.get("teams") or {}).get("edges", [])
-        ]
-        # Flatten members list for convenience
+        workspaces = me.get("workspaces") or []
         result = []
-        for team in teams:
-            members = [
-                {**m["node"], "teamId": team["id"], "teamName": team["name"]}
-                for m in (team.get("members") or {}).get("edges", [])
-            ]
-            result.extend(members)
+        for ws in workspaces:
+            for m in ws.get("members") or []:
+                result.append(
+                    {
+                        **m,
+                        "workspaceId": ws.get("id"),
+                        "workspaceName": ws.get("name"),
+                    }
+                )
         return result
 
-    def team_invite(self, team_id: str, email: str, role: str) -> bool:
+    def team_invite(self, workspace_id: str, email: str, role: str) -> bool:
         data = self.query(
             """
-            mutation InviteTeamMember(
-                $teamId: String!, $email: String!, $role: TeamMemberRole!
+            mutation InviteWorkspaceMember(
+                $workspaceId: String!, $email: String!, $role: WorkspaceRole!
             ) {
-                teamInvite(teamId: $teamId, email: $email, role: $role)
+                workspaceUserInvite(
+                    id: $workspaceId,
+                    input: { email: $email, role: $role }
+                )
             }
             """,
-            {"teamId": team_id, "email": email, "role": role},
+            {"workspaceId": workspace_id, "email": email, "role": role},
         )
-        return bool(data.get("teamInvite"))
+        return bool(data.get("workspaceUserInvite"))
 
-    def team_member_remove(self, team_id: str, user_id: str) -> bool:
+    def team_member_remove(self, workspace_id: str, user_id: str) -> bool:
         data = self.query(
             """
-            mutation RemoveTeamMember($teamId: String!, $userId: String!) {
-                teamMemberRemove(teamId: $teamId, userId: $userId)
+            mutation RemoveWorkspaceMember($workspaceId: String!, $userId: String!) {
+                workspaceUserRemove(id: $workspaceId, userId: $userId)
             }
             """,
-            {"teamId": team_id, "userId": user_id},
+            {"workspaceId": workspace_id, "userId": user_id},
         )
-        return bool(data.get("teamMemberRemove"))
+        return bool(data.get("workspaceUserRemove"))
 
     # ------------------------------------------------------------------
     # Cron services
@@ -838,54 +845,25 @@ class RailwayBackend:
     # Private networking
     # ------------------------------------------------------------------
 
-    def networking_list(self, project_id: str) -> list[dict]:
-        """Return all internal domains across all service instances in a project."""
+    def networking_list(self, environment_id: str) -> list[dict]:
+        """Return all private network endpoints for an environment."""
         data = self.query(
             """
-            query GetNetworking($id: String!) {
-                project(id: $id) {
-                    services {
-                        edges {
-                            node {
-                                id
-                                name
-                                serviceInstances {
-                                    edges {
-                                        node {
-                                            domains {
-                                                edges {
-                                                    node { id internalDomain }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            query GetNetworking($environmentId: String!) {
+                privateNetworks(environmentId: $environmentId) {
+                    name
+                    dnsName
+                    networkId
+                    publicId
+                    projectId
+                    environmentId
+                    createdAt
                 }
             }
             """,
-            {"id": project_id},
+            {"environmentId": environment_id},
         )
-        project = data.get("project") or {}
-        result = []
-        for svc_edge in (project.get("services") or {}).get("edges", []):
-            svc = svc_edge["node"]
-            for inst_edge in (svc.get("serviceInstances") or {}).get("edges", []):
-                inst = inst_edge["node"]
-                for dom_edge in (inst.get("domains") or {}).get("edges", []):
-                    dom = dom_edge["node"]
-                    if dom.get("internalDomain"):
-                        result.append(
-                            {
-                                "serviceId": svc.get("id"),
-                                "serviceName": svc.get("name"),
-                                "id": dom.get("id"),
-                                "internalDomain": dom.get("internalDomain"),
-                            }
-                        )
-        return result
+        return data.get("privateNetworks") or []
 
     # ------------------------------------------------------------------
     # Git integration
@@ -916,3 +894,217 @@ class RailwayBackend:
             {"id": service_id},
         )
         return bool(data.get("serviceDisconnect"))
+
+    # ------------------------------------------------------------------
+    # Project mutations (update / delete)
+    # ------------------------------------------------------------------
+
+    def project_update(self, project_id: str, name: str | None = None, description: str | None = None) -> dict:
+        input_obj: dict = {}
+        if name is not None:
+            input_obj["name"] = name
+        if description is not None:
+            input_obj["description"] = description
+        data = self.query(
+            """
+            mutation UpdateProject($id: String!, $input: ProjectUpdateInput!) {
+                projectUpdate(id: $id, input: $input) {
+                    id
+                    name
+                    description
+                }
+            }
+            """,
+            {"id": project_id, "input": input_obj},
+        )
+        return data.get("projectUpdate") or {}
+
+    def project_delete(self, project_id: str) -> bool:
+        data = self.query(
+            """
+            mutation DeleteProject($id: String!) {
+                projectDelete(id: $id)
+            }
+            """,
+            {"id": project_id},
+        )
+        return bool(data.get("projectDelete"))
+
+    # ------------------------------------------------------------------
+    # Service mutations (create generic / update / delete)
+    # ------------------------------------------------------------------
+
+    def service_create(self, name: str, project_id: str) -> dict:
+        data = self.query(
+            """
+            mutation CreateService($name: String!, $projectId: String!) {
+                serviceCreate(input: { projectId: $projectId, name: $name }) {
+                    id
+                    name
+                }
+            }
+            """,
+            {"name": name, "projectId": project_id},
+        )
+        return data.get("serviceCreate") or {}
+
+    def service_update(self, service_id: str, name: str | None = None) -> dict:
+        input_obj: dict = {}
+        if name is not None:
+            input_obj["name"] = name
+        data = self.query(
+            """
+            mutation UpdateService($id: String!, $input: ServiceUpdateInput!) {
+                serviceUpdate(id: $id, input: $input) {
+                    id
+                    name
+                }
+            }
+            """,
+            {"id": service_id, "input": input_obj},
+        )
+        return data.get("serviceUpdate") or {}
+
+    def service_delete(self, service_id: str) -> bool:
+        data = self.query(
+            """
+            mutation DeleteService($id: String!) {
+                serviceDelete(id: $id)
+            }
+            """,
+            {"id": service_id},
+        )
+        return bool(data.get("serviceDelete"))
+
+    # ------------------------------------------------------------------
+    # Deployment mutations (restart / cancel / stop)
+    # ------------------------------------------------------------------
+
+    def deployment_restart(self, deployment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation RestartDeployment($id: String!) {
+                deploymentRestart(id: $id)
+            }
+            """,
+            {"id": deployment_id},
+        )
+        return bool(data.get("deploymentRestart"))
+
+    def deployment_cancel(self, deployment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation CancelDeployment($id: String!) {
+                deploymentCancel(id: $id)
+            }
+            """,
+            {"id": deployment_id},
+        )
+        return bool(data.get("deploymentCancel"))
+
+    def deployment_stop(self, service_id: str, environment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation StopDeployment($serviceId: String!, $environmentId: String!) {
+                deploymentStop(input: {
+                    serviceId: $serviceId,
+                    environmentId: $environmentId
+                })
+            }
+            """,
+            {"serviceId": service_id, "environmentId": environment_id},
+        )
+        return bool(data.get("deploymentStop"))
+
+    # ------------------------------------------------------------------
+    # Environment mutations (delete / rename)
+    # ------------------------------------------------------------------
+
+    def environment_delete(self, environment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation DeleteEnvironment($id: String!) {
+                environmentDelete(id: $id)
+            }
+            """,
+            {"id": environment_id},
+        )
+        return bool(data.get("environmentDelete"))
+
+    def environment_rename(self, environment_id: str, name: str) -> bool:
+        data = self.query(
+            """
+            mutation RenameEnvironment($id: String!, $name: String!) {
+                environmentRename(id: $id, input: { name: $name })
+            }
+            """,
+            {"id": environment_id, "name": name},
+        )
+        return bool(data.get("environmentRename"))
+
+    # ------------------------------------------------------------------
+    # Bulk variables
+    # ------------------------------------------------------------------
+
+    def variable_collection_upsert(
+        self,
+        project_id: str,
+        environment_id: str,
+        variables: dict[str, str],
+        service_id: str | None = None,
+    ) -> bool:
+        input_obj: dict = {
+            "projectId": project_id,
+            "environmentId": environment_id,
+            "variables": variables,
+        }
+        if service_id:
+            input_obj["serviceId"] = service_id
+
+        data = self.query(
+            """
+            mutation BulkUpsertVariables($input: VariableCollectionUpsertInput!) {
+                variableCollectionUpsert(input: $input)
+            }
+            """,
+            {"input": input_obj},
+        )
+        return bool(data.get("variableCollectionUpsert"))
+
+    # ------------------------------------------------------------------
+    # Platform status & regions
+    # ------------------------------------------------------------------
+
+    def platform_status(self) -> dict:
+        data = self.query(
+            """
+            query {
+                platformStatus {
+                    isStable
+                    incident {
+                        id
+                        message
+                        url
+                        status
+                    }
+                }
+            }
+            """
+        )
+        return data.get("platformStatus") or {}
+
+    def regions(self) -> list[dict]:
+        data = self.query(
+            """
+            query {
+                regions {
+                    name
+                    region
+                    country
+                    location
+                    railwayMetal
+                }
+            }
+            """
+        )
+        return data.get("regions") or []

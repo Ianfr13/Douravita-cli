@@ -10,21 +10,6 @@ import click
 from cli_anything.railway.utils.railway_backend import RailwayBackend, RailwayAPIError
 
 
-def _bytes_human(value) -> str:
-    """Format a byte count as a human-readable string."""
-    if value is None:
-        return "N/A"
-    try:
-        n = float(value)
-    except (TypeError, ValueError):
-        return str(value)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
-
-
 @click.group("metrics")
 def metrics_group():
     """View Railway service metrics."""
@@ -55,15 +40,23 @@ def metrics_service(
         skin.info("No metrics available.")
         return
 
-    cpu = metrics.get("cpuPercentage")
-    cpu_str = f"{cpu:.2f}%" if cpu is not None else "N/A"
+    # Build a summary from the latest value per measurement
+    summary = {}
+    for m in metrics:
+        name = m.get("measurement", "?")
+        values = m.get("values") or []
+        if values:
+            last = values[-1]
+            val = last.get("value")
+            if name == "CPU_USAGE":
+                summary["CPU"] = f"{val:.4f}%" if val is not None else "N/A"
+            elif name == "MEMORY_USAGE_GB":
+                summary["Memory"] = f"{val:.3f} GB" if val is not None else "N/A"
+            elif name == "NETWORK_RX_GB":
+                summary["Network RX"] = f"{val:.4f} GB" if val is not None else "N/A"
+            elif name == "NETWORK_TX_GB":
+                summary["Network TX"] = f"{val:.4f} GB" if val is not None else "N/A"
+            else:
+                summary[name] = f"{val}" if val is not None else "N/A"
 
-    skin.status_block(
-        {
-            "CPU":        cpu_str,
-            "Memory":     _bytes_human(metrics.get("memoryUsageBytes")),
-            "Network RX": _bytes_human(metrics.get("networkRxBytes")),
-            "Network TX": _bytes_human(metrics.get("networkTxBytes")),
-        },
-        title=f"Metrics — {service_id}",
-    )
+    skin.status_block(summary, title=f"Metrics — {service_id}")

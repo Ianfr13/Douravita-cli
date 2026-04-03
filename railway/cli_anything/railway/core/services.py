@@ -112,3 +112,79 @@ def services_create_cron(
         f"Cron service created: {service.get('name')} (id: {service.get('id')}) "
         f"with schedule '{schedule}'."
     )
+
+
+@services_group.command("create")
+@click.argument("name")
+@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def services_create(ctx: click.Context, name: str, project_id: str, as_json: bool):
+    """Create a new service in a project."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        service = backend.service_create(name, project_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(service, indent=2))
+        return
+
+    skin.success(f"Service created: {service.get('name')} (id: {service.get('id')})")
+
+
+@services_group.command("update")
+@click.argument("service_id")
+@click.option("--name", required=True, help="New service name.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def services_update(ctx: click.Context, service_id: str, name: str, as_json: bool):
+    """Rename a service."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        service = backend.service_update(service_id, name=name)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(service, indent=2))
+        return
+
+    skin.success(f"Service updated: {service.get('name')} ({service.get('id')})")
+
+
+@services_group.command("delete")
+@click.argument("service_id")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def services_delete(ctx: click.Context, service_id: str, yes: bool, as_json: bool):
+    """Delete a service (irreversible)."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+
+    if not yes:
+        skin.warning(f"This will permanently delete service {service_id}.")
+        if not click.confirm("Continue?"):
+            skin.info("Aborted.")
+            return
+
+    try:
+        result = backend.service_delete(service_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"deleted": result, "serviceId": service_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Service {service_id} deleted.")
+    else:
+        skin.warning("Delete returned false — check Railway dashboard.")

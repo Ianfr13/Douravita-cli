@@ -95,12 +95,12 @@ def _make_backend(**overrides):
     backend.volume_delete.return_value = True
 
     # --- Metrics ---
-    backend.service_metrics.return_value = {
-        "cpuPercentage": 12.5,
-        "memoryUsageBytes": 134217728,
-        "networkRxBytes": 1048576,
-        "networkTxBytes": 524288,
-    }
+    backend.service_metrics.return_value = [
+        {"measurement": "CPU_USAGE", "values": [{"ts": 1700000000, "value": 0.125}]},
+        {"measurement": "MEMORY_USAGE_GB", "values": [{"ts": 1700000000, "value": 0.218}]},
+        {"measurement": "NETWORK_RX_GB", "values": [{"ts": 1700000000, "value": 0.003}]},
+        {"measurement": "NETWORK_TX_GB", "values": [{"ts": 1700000000, "value": 0.002}]},
+    ]
 
     # --- Templates ---
     backend.templates_list.return_value = [
@@ -134,21 +134,52 @@ def _make_backend(**overrides):
     backend.webhook_create.return_value = {"id": "wh-2", "url": "https://hooks.example.com/new"}
     backend.webhook_delete.return_value = True
 
-    # --- Team ---
+    # --- Team (workspace members) ---
     backend.team_list.return_value = [
-        {"id": "usr-1", "email": "alice@example.com", "role": "ADMIN", "teamId": "team-1", "teamName": "Acme"}
+        {"id": "usr-1", "email": "alice@example.com", "role": "ADMIN", "workspaceId": "ws-1", "workspaceName": "Acme"}
     ]
     backend.team_invite.return_value = True
     backend.team_member_remove.return_value = True
 
     # --- Networking ---
     backend.networking_list.return_value = [
-        {"serviceId": "svc-1", "serviceName": "web", "id": "nd-1", "internalDomain": "web.railway.internal"}
+        {"name": "web", "dnsName": "web.railway.internal", "networkId": "net-1", "publicId": "pub-1", "projectId": "proj-1", "environmentId": "env-1", "createdAt": "2024-01-01T00:00:00"}
     ]
 
     # --- Git ---
     backend.git_connect.return_value = True
     backend.git_disconnect.return_value = True
+
+    # --- Project update/delete ---
+    backend.project_update.return_value = {"id": "proj-1", "name": "Renamed", "description": "New desc"}
+    backend.project_delete.return_value = True
+
+    # --- Service create/update/delete ---
+    backend.service_create.return_value = {"id": "svc-new", "name": "api"}
+    backend.service_update.return_value = {"id": "svc-1", "name": "api-v2"}
+    backend.service_delete.return_value = True
+
+    # --- Deployment restart/cancel/stop ---
+    backend.deployment_restart.return_value = True
+    backend.deployment_cancel.return_value = True
+    backend.deployment_stop.return_value = True
+
+    # --- Environment delete/rename ---
+    backend.environment_delete.return_value = True
+    backend.environment_rename.return_value = True
+
+    # --- Bulk variables ---
+    backend.variable_collection_upsert.return_value = True
+
+    # --- Platform ---
+    backend.platform_status.return_value = {
+        "isStable": True,
+        "incident": None,
+    }
+    backend.regions.return_value = [
+        {"name": "us-west1", "region": "Oregon", "country": "USA", "location": "US West", "railwayMetal": False},
+        {"name": "europe-west4", "region": "Amsterdam", "country": "Netherlands", "location": "EU West", "railwayMetal": True},
+    ]
 
     for k, v in overrides.items():
         setattr(backend, k, v)
@@ -755,17 +786,19 @@ class TestMetricsService:
     def test_tabular_output(self):
         result = _invoke(["metrics", "service", "svc-1", "--env", "env-1"])
         assert result.exit_code == 0
-        assert "12.50%" in result.output
+        assert "CPU" in result.output
+        assert "0.1250" in result.output
 
     def test_json_output(self):
         result = _invoke(["metrics", "service", "svc-1", "--env", "env-1", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert data["cpuPercentage"] == 12.5
+        assert isinstance(data, list)
+        assert data[0]["measurement"] == "CPU_USAGE"
 
     def test_empty(self):
         backend = _make_backend()
-        backend.service_metrics.return_value = {}
+        backend.service_metrics.return_value = []
         result = _invoke(["metrics", "service", "svc-1", "--env", "env-1"], backend=backend)
         assert result.exit_code == 0
 
@@ -1161,26 +1194,26 @@ class TestServicesCreateCron:
 
 class TestNetworkingList:
     def test_tabular_output(self):
-        result = _invoke(["networking", "list", "--project", "proj-1"])
+        result = _invoke(["networking", "list", "--env", "env-1"])
         assert result.exit_code == 0
         assert "web.railway.internal" in result.output
 
     def test_json_output(self):
-        result = _invoke(["networking", "list", "--project", "proj-1", "--json"])
+        result = _invoke(["networking", "list", "--env", "env-1", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert data[0]["internalDomain"] == "web.railway.internal"
+        assert data[0]["dnsName"] == "web.railway.internal"
 
     def test_empty(self):
         backend = _make_backend()
         backend.networking_list.return_value = []
-        result = _invoke(["networking", "list", "--project", "proj-1"], backend=backend)
+        result = _invoke(["networking", "list", "--env", "env-1"], backend=backend)
         assert result.exit_code == 0
 
     def test_api_error(self):
         backend = _make_backend()
         backend.networking_list.side_effect = RailwayAPIError("fail")
-        result = _invoke(["networking", "list", "--project", "proj-1"], backend=backend)
+        result = _invoke(["networking", "list", "--env", "env-1"], backend=backend)
         assert result.exit_code != 0
 
 
@@ -1223,4 +1256,374 @@ class TestGitDisconnect:
         backend = _make_backend()
         backend.git_disconnect.side_effect = RailwayAPIError("fail")
         result = _invoke(["git", "disconnect", "svc-1"], backend=backend)
+        assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# Projects update / delete
+# ---------------------------------------------------------------------------
+
+class TestProjectsUpdate:
+    def test_updates(self):
+        result = _invoke(["projects", "update", "proj-1", "--name", "Renamed"])
+        assert result.exit_code == 0
+        assert "Renamed" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["projects", "update", "proj-1", "--name", "Renamed", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["name"] == "Renamed"
+
+    def test_description_only(self):
+        result = _invoke(["projects", "update", "proj-1", "--description", "New desc"])
+        assert result.exit_code == 0
+        assert "proj-1" in result.output
+
+    def test_no_flags_errors(self):
+        result = _invoke(["projects", "update", "proj-1"])
+        assert result.exit_code != 0
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.project_update.side_effect = RailwayAPIError("fail")
+        result = _invoke(["projects", "update", "proj-1", "--name", "X"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestProjectsDelete:
+    def test_deletes_with_yes(self):
+        result = _invoke(["projects", "delete", "proj-1", "--yes"])
+        assert result.exit_code == 0
+        assert "deleted" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["projects", "delete", "proj-1", "--yes", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["deleted"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.project_delete.side_effect = RailwayAPIError("fail")
+        result = _invoke(["projects", "delete", "proj-1", "--yes"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.project_delete.return_value = False
+        result = _invoke(["projects", "delete", "proj-1", "--yes"], backend=backend)
+        assert result.exit_code == 0
+        assert "false" in result.output.lower() or "warning" in result.output.lower() or "check" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Services create / update / delete
+# ---------------------------------------------------------------------------
+
+class TestServicesCreate:
+    def test_creates(self):
+        result = _invoke(["services", "create", "api", "--project", "proj-1"])
+        assert result.exit_code == 0
+        assert "api" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["services", "create", "api", "--project", "proj-1", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["id"] == "svc-new"
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.service_create.side_effect = RailwayAPIError("fail")
+        result = _invoke(["services", "create", "api", "--project", "proj-1"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestServicesUpdate:
+    def test_updates(self):
+        result = _invoke(["services", "update", "svc-1", "--name", "api-v2"])
+        assert result.exit_code == 0
+        assert "api-v2" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["services", "update", "svc-1", "--name", "api-v2", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["name"] == "api-v2"
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.service_update.side_effect = RailwayAPIError("fail")
+        result = _invoke(["services", "update", "svc-1", "--name", "X"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestServicesDelete:
+    def test_deletes_with_yes(self):
+        result = _invoke(["services", "delete", "svc-1", "--yes"])
+        assert result.exit_code == 0
+        assert "deleted" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["services", "delete", "svc-1", "--yes", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["deleted"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.service_delete.side_effect = RailwayAPIError("fail")
+        result = _invoke(["services", "delete", "svc-1", "--yes"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.service_delete.return_value = False
+        result = _invoke(["services", "delete", "svc-1", "--yes"], backend=backend)
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Deployments restart / cancel / stop
+# ---------------------------------------------------------------------------
+
+class TestDeploymentsRestart:
+    def test_success(self):
+        result = _invoke(["deployments", "restart", "dep-1"])
+        assert result.exit_code == 0
+        assert "restarted" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["deployments", "restart", "dep-1", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["restarted"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.deployment_restart.side_effect = RailwayAPIError("fail")
+        result = _invoke(["deployments", "restart", "dep-1"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.deployment_restart.return_value = False
+        result = _invoke(["deployments", "restart", "dep-1"], backend=backend)
+        assert result.exit_code == 0
+
+
+class TestDeploymentsCancel:
+    def test_success(self):
+        result = _invoke(["deployments", "cancel", "dep-1"])
+        assert result.exit_code == 0
+        assert "cancelled" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["deployments", "cancel", "dep-1", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["cancelled"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.deployment_cancel.side_effect = RailwayAPIError("fail")
+        result = _invoke(["deployments", "cancel", "dep-1"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.deployment_cancel.return_value = False
+        result = _invoke(["deployments", "cancel", "dep-1"], backend=backend)
+        assert result.exit_code == 0
+
+
+class TestDeploymentsStop:
+    def test_success(self):
+        result = _invoke(["deployments", "stop", "svc-1", "--env", "env-1"])
+        assert result.exit_code == 0
+        assert "stopped" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["deployments", "stop", "svc-1", "--env", "env-1", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["stopped"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.deployment_stop.side_effect = RailwayAPIError("fail")
+        result = _invoke(["deployments", "stop", "svc-1", "--env", "env-1"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.deployment_stop.return_value = False
+        result = _invoke(["deployments", "stop", "svc-1", "--env", "env-1"], backend=backend)
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Environments delete / rename
+# ---------------------------------------------------------------------------
+
+class TestEnvironmentsDelete:
+    def test_deletes_with_yes(self):
+        result = _invoke(["environments", "delete", "env-1", "--yes"])
+        assert result.exit_code == 0
+        assert "deleted" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["environments", "delete", "env-1", "--yes", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["deleted"] is True
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.environment_delete.side_effect = RailwayAPIError("fail")
+        result = _invoke(["environments", "delete", "env-1", "--yes"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.environment_delete.return_value = False
+        result = _invoke(["environments", "delete", "env-1", "--yes"], backend=backend)
+        assert result.exit_code == 0
+
+
+class TestEnvironmentsRename:
+    def test_renames(self):
+        result = _invoke(["environments", "rename", "env-1", "staging"])
+        assert result.exit_code == 0
+        assert "staging" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["environments", "rename", "env-1", "staging", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["renamed"] is True
+        assert data["name"] == "staging"
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.environment_rename.side_effect = RailwayAPIError("fail")
+        result = _invoke(["environments", "rename", "env-1", "staging"], backend=backend)
+        assert result.exit_code != 0
+
+    def test_false_result(self):
+        backend = _make_backend()
+        backend.environment_rename.return_value = False
+        result = _invoke(["environments", "rename", "env-1", "staging"], backend=backend)
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Variables bulk-set
+# ---------------------------------------------------------------------------
+
+class TestVariablesBulkSet:
+    def test_sets_multiple(self):
+        result = _invoke([
+            "variables", "bulk-set", "FOO=bar", "BAZ=qux",
+            "--project", "proj-1", "--env", "env-1",
+        ])
+        assert result.exit_code == 0
+        assert "2" in result.output
+
+    def test_json_output(self):
+        result = _invoke([
+            "variables", "bulk-set", "A=1", "B=2", "C=3",
+            "--project", "proj-1", "--env", "env-1", "--json",
+        ])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["count"] == 3
+        assert set(data["keys"]) == {"A", "B", "C"}
+
+    def test_invalid_pair(self):
+        result = _invoke([
+            "variables", "bulk-set", "NOEQUALSSIGN",
+            "--project", "proj-1", "--env", "env-1",
+        ])
+        assert result.exit_code != 0
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.variable_collection_upsert.side_effect = RailwayAPIError("fail")
+        result = _invoke([
+            "variables", "bulk-set", "X=1",
+            "--project", "proj-1", "--env", "env-1",
+        ], backend=backend)
+        assert result.exit_code != 0
+
+    def test_with_service(self):
+        result = _invoke([
+            "variables", "bulk-set", "K=V",
+            "--project", "proj-1", "--env", "env-1", "--service", "svc-1",
+        ])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Platform status / regions
+# ---------------------------------------------------------------------------
+
+class TestPlatformStatus:
+    def test_stable(self):
+        result = _invoke(["platform", "status"])
+        assert result.exit_code == 0
+        assert "stable" in result.output.lower()
+
+    def test_json_output(self):
+        result = _invoke(["platform", "status", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["isStable"] is True
+
+    def test_with_incident(self):
+        backend = _make_backend()
+        backend.platform_status.return_value = {
+            "isStable": False,
+            "incident": {
+                "id": "inc-1",
+                "message": "API degraded",
+                "url": "https://status.railway.app/inc-1",
+                "status": "investigating",
+            },
+        }
+        result = _invoke(["platform", "status"], backend=backend)
+        assert result.exit_code == 0
+        assert "issue" in result.output.lower() or "incident" in result.output.lower() or "degraded" in result.output.lower()
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.platform_status.side_effect = RailwayAPIError("fail")
+        result = _invoke(["platform", "status"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestPlatformRegions:
+    def test_tabular_output(self):
+        result = _invoke(["platform", "regions"])
+        assert result.exit_code == 0
+        assert "Oregon" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["platform", "regions", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 2
+        assert data[0]["name"] == "us-west1"
+
+    def test_empty(self):
+        backend = _make_backend()
+        backend.regions.return_value = []
+        result = _invoke(["platform", "regions"], backend=backend)
+        assert result.exit_code == 0
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.regions.side_effect = RailwayAPIError("fail")
+        result = _invoke(["platform", "regions"], backend=backend)
         assert result.exit_code != 0

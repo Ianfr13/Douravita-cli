@@ -125,3 +125,69 @@ def projects_info(ctx: click.Context, project_id: str, as_json: bool):
                 for s in services
             ],
         )
+
+
+@projects_group.command("update")
+@click.argument("project_id")
+@click.option("--name", default=None, help="New project name.")
+@click.option("--description", default=None, help="New project description.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def projects_update(
+    ctx: click.Context,
+    project_id: str,
+    name: str | None,
+    description: str | None,
+    as_json: bool,
+):
+    """Update a project's name or description."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+
+    if name is None and description is None:
+        skin.error("Provide at least --name or --description.")
+        sys.exit(1)
+
+    try:
+        project = backend.project_update(project_id, name=name, description=description)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(project, indent=2))
+        return
+
+    skin.success(f"Project updated: {project.get('name')} ({project.get('id')})")
+
+
+@projects_group.command("delete")
+@click.argument("project_id")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def projects_delete(ctx: click.Context, project_id: str, yes: bool, as_json: bool):
+    """Delete a project (irreversible)."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+
+    if not yes:
+        skin.warning(f"This will permanently delete project {project_id}.")
+        if not click.confirm("Continue?"):
+            skin.info("Aborted.")
+            return
+
+    try:
+        result = backend.project_delete(project_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"deleted": result, "projectId": project_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Project {project_id} deleted.")
+    else:
+        skin.warning("Delete returned false — check Railway dashboard.")

@@ -125,3 +125,51 @@ def variables_delete(
         skin.success(f"Variable '{key}' deleted successfully.")
     else:
         skin.warning(f"Variable '{key}' delete returned false.")
+
+
+@variables_group.command("bulk-set")
+@click.argument("pairs", nargs=-1, required=True)
+@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--service", "service_id", default=None, help="Service ID (optional).")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def variables_bulk_set(
+    ctx: click.Context,
+    pairs: tuple[str, ...],
+    project_id: str,
+    environment_id: str,
+    service_id: str | None,
+    as_json: bool,
+):
+    """Set multiple variables at once.
+
+    PAIRS are KEY=VALUE arguments, e.g.: variables bulk-set FOO=bar BAZ=qux
+    """
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+
+    variables: dict[str, str] = {}
+    for pair in pairs:
+        if "=" not in pair:
+            skin.error(f"Invalid pair '{pair}' — expected KEY=VALUE format.")
+            sys.exit(1)
+        key, value = pair.split("=", 1)
+        variables[key] = value
+
+    try:
+        result = backend.variable_collection_upsert(
+            project_id, environment_id, variables, service_id
+        )
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"set": result, "count": len(variables), "keys": list(variables.keys())}, indent=2))
+        return
+
+    if result:
+        skin.success(f"{len(variables)} variable(s) set successfully: {', '.join(variables.keys())}")
+    else:
+        skin.warning("Bulk upsert returned false.")

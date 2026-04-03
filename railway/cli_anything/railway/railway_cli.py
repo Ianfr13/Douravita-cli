@@ -29,6 +29,7 @@ from cli_anything.railway.core.webhooks import webhooks_group
 from cli_anything.railway.core.team import team_group
 from cli_anything.railway.core.networking import networking_group
 from cli_anything.railway.core.git import git_group
+from cli_anything.railway.core.platform import platform_group
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +92,7 @@ main.add_command(webhooks_group)
 main.add_command(team_group)
 main.add_command(networking_group)
 main.add_command(git_group)
+main.add_command(platform_group)
 
 
 # ---------------------------------------------------------------------------
@@ -101,18 +103,29 @@ _REPL_HELP = {
     "projects list":                   "List all projects",
     "projects create <NAME>":          "Create a new project",
     "projects info <ID>":              "Show project details",
+    "projects update <ID> --name/--description": "Update project name/description",
+    "projects delete <ID>":            "Delete a project",
     "services list --project <ID>":    "List services in a project",
     "services info <ID>":              "Show service details",
+    "services create <NAME> --project":"Create a new service",
     "services create-cron <N> <SCHED>":"Create a cron service",
+    "services update <ID> --name":     "Rename a service",
+    "services delete <ID>":            "Delete a service",
     "deployments list --service <ID>": "List deployments for a service",
     "deployments trigger <ID>":        "Trigger a deployment",
     "deployments status <ID>":         "Show deployment status",
     "deployments rollback <ID>":       "Rollback to a deployment",
+    "deployments restart <ID>":        "Restart without rebuild",
+    "deployments cancel <ID>":         "Cancel in-progress deployment",
+    "deployments stop <SVC> --env":    "Stop active deployment",
     "variables list":                  "List environment variables",
     "variables set KEY VALUE":         "Set an environment variable",
     "variables delete KEY":            "Delete an environment variable",
+    "variables bulk-set K=V K=V ...":  "Set multiple variables at once",
     "environments list":               "List environments",
     "environments create <NAME>":      "Create an environment",
+    "environments delete <ID>":        "Delete an environment",
+    "environments rename <ID> <NAME>": "Rename an environment",
     "logs service <ID> --env <ID>":    "Show recent service logs",
     "logs deployment <ID>":            "Show deployment logs",
     "domains list --service --env":    "List service domains",
@@ -141,9 +154,11 @@ _REPL_HELP = {
     "team list":                       "List team members",
     "team invite <EMAIL> --team <ID>": "Invite a team member",
     "team remove <USER_ID> --team <ID>":"Remove a team member",
-    "networking list --project <ID>":  "List private network endpoints",
+    "networking list --env <ID>":      "List private network endpoints",
     "git connect <SVC> <REPO> <BRANCH>":"Connect Git repo to service",
     "git disconnect <SVC>":            "Disconnect Git repo",
+    "platform status":                 "Check Railway platform status",
+    "platform regions":                "List available deploy regions",
     "help":                            "Show this help",
     "quit / exit":                     "Exit the REPL",
 }
