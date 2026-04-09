@@ -1114,8 +1114,8 @@ class TestCoreCampaigns:
                         name="Test", traffic_channel_id="5",
                         domain="track.io", cost_type="cpc", cost_value=0.5)
         data = mock_api.call_args[1]["data"]
-        assert data["name"] == "Test"
-        assert data["traffic_channel_id"] == "5"
+        assert data["title"] == "Test"
+        assert data["source_id"] == "5"
         assert data["cost_type"] == "cpc"
         assert data["cost_value"] == 0.5
 

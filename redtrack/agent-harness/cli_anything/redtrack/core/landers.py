@@ -50,7 +50,7 @@ def create_lander(api_key: str, base_url: str, name: str,
     Returns:
         Created lander data dict.
     """
-    data: dict = {"name": name}
+    data: dict = {"title": name}
     if url:
         data["url"] = url
     if tracking_type:
@@ -78,7 +78,7 @@ def update_lander(api_key: str, base_url: str, lander_id: str,
     """
     data: dict = {}
     if name is not None:
-        data["name"] = name
+        data["title"] = name
     if url is not None:
         data["url"] = url
     if tracking_type is not None:

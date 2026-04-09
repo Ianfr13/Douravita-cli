@@ -226,7 +226,7 @@ def campaign_get(campaign_id):
 @campaign.command("create")
 @click.option("--name", required=True, help="Campaign name")
 @click.option("--traffic-channel-id", required=True, help="Traffic channel ID")
-@click.option("--domain", default=None, help="Custom tracking domain")
+@click.option("--domain", default=None, help="Custom tracking domain ID")
 @click.option("--cost-type", default=None,
               help="Cost type (cpc, cpm, cpa, revshare, auto, daily_budget)")
 @click.option("--cost-value", type=float, default=None, help="Cost value")

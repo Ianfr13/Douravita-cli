@@ -130,6 +130,24 @@ def delete_offer(api_key: str, base_url: str, offer_id: str) -> dict:
     return api_delete(f"/offers/{offer_id}", api_key=api_key, base_url=base_url)
 
 
+def export_offers(api_key: str, base_url: str,
+                  status: str | None = None) -> dict:
+    """Export offers via GET /offers/export.
+
+    Args:
+        api_key: RedTrack API key.
+        base_url: API base URL.
+        status: Filter by status (optional).
+
+    Returns:
+        Export data from the API.
+    """
+    params: dict = {}
+    if status:
+        params["status"] = status
+    return api_get("/offers/export", params=params, api_key=api_key, base_url=base_url)
+
+
 # ── Offer Sources (Affiliate Networks) ────────────────────────────────────
 
 

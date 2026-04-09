@@ -67,9 +67,9 @@ def create_campaign(api_key: str, base_url: str, name: str,
     Returns:
         Created campaign data dict.
     """
-    data: dict = {"name": name, "traffic_channel_id": traffic_channel_id}
+    data: dict = {"title": name, "source_id": traffic_channel_id}
     if domain:
-        data["domain"] = domain
+        data["domain_id"] = domain
     if cost_type:
         data["cost_type"] = cost_type
     if cost_value is not None:
@@ -97,7 +97,7 @@ def update_campaign(api_key: str, base_url: str, campaign_id: str,
     """
     data: dict = {}
     if name is not None:
-        data["name"] = name
+        data["title"] = name
     if status is not None:
         data["status"] = status
     if cost_type is not None:
