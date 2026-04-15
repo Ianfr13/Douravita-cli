@@ -86,3 +86,42 @@ def platform_regions(ctx: click.Context, as_json: bool):
             for r in regions
         ],
     )
+
+
+@platform_group.command("me")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def platform_me(ctx: click.Context, as_json: bool):
+    """Show current authenticated user info."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        me = backend.me()
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(me, indent=2))
+        return
+
+    if not me:
+        skin.error("Could not retrieve user info.")
+        sys.exit(1)
+
+    skin.status_block(
+        {
+            "ID": me.get("id", ""),
+            "Name": me.get("name", ""),
+            "Email": me.get("email", ""),
+        },
+        title="Current User",
+    )
+
+    workspaces = me.get("workspaces") or []
+    if workspaces:
+        skin.section("Workspaces")
+        skin.table(
+            ["ID", "Name"],
+            [[w.get("id", ""), w.get("name", "")] for w in workspaces],
+        )

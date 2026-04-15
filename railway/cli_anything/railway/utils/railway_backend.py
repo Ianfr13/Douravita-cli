@@ -184,23 +184,33 @@ class RailwayBackend:
     # Deployments
     # ------------------------------------------------------------------
 
-    def deployments_list(self, service_id: str) -> list[dict]:
+    def deployments_list(
+        self, service_id: str, environment_id: str | None = None
+    ) -> list[dict]:
+        variables: dict = {"serviceId": service_id}
+        input_fields = "serviceId: $serviceId"
+        var_decl = "$serviceId: String!"
+        if environment_id:
+            variables["environmentId"] = environment_id
+            input_fields += ", environmentId: $environmentId"
+            var_decl += ", $environmentId: String!"
+
         data = self.query(
-            """
-            query GetDeployments($serviceId: String!) {
-                deployments(input: { serviceId: $serviceId }) {
-                    edges {
-                        node {
+            f"""
+            query GetDeployments({var_decl}) {{
+                deployments(input: {{ {input_fields} }}) {{
+                    edges {{
+                        node {{
                             id
                             status
                             createdAt
                             staticUrl
-                        }
-                    }
-                }
-            }
+                        }}
+                    }}
+                }}
+            }}
             """,
-            {"serviceId": service_id},
+            variables,
         )
         return [
             edge["node"]
@@ -1108,3 +1118,442 @@ class RailwayBackend:
             """
         )
         return data.get("regions") or []
+
+    # ------------------------------------------------------------------
+    # Me / User info
+    # ------------------------------------------------------------------
+
+    def me(self) -> dict:
+        data = self.query(
+            """
+            query {
+                me {
+                    id
+                    name
+                    email
+                    workspaces {
+                        id
+                        name
+                    }
+                }
+            }
+            """
+        )
+        return data.get("me") or {}
+
+    # ------------------------------------------------------------------
+    # Project members & transfer
+    # ------------------------------------------------------------------
+
+    def project_members(self, project_id: str) -> list[dict]:
+        data = self.query(
+            """
+            query GetProjectMembers($projectId: String!) {
+                projectMembers(projectId: $projectId) {
+                    id
+                    role
+                    user { id name email }
+                }
+            }
+            """,
+            {"projectId": project_id},
+        )
+        return data.get("projectMembers") or []
+
+    def project_transfer(self, project_id: str, team_id: str) -> bool:
+        data = self.query(
+            """
+            mutation TransferProject($projectId: String!, $input: ProjectTransferInput!) {
+                projectTransfer(id: $projectId, input: $input)
+            }
+            """,
+            {"projectId": project_id, "input": {"teamId": team_id}},
+        )
+        return bool(data.get("projectTransfer"))
+
+    # ------------------------------------------------------------------
+    # Deployment — redeploy / remove
+    # ------------------------------------------------------------------
+
+    def deployment_trigger_v2(self, service_id: str, environment_id: str) -> dict:
+        """Trigger deploy and return deployment ID."""
+        data = self.query(
+            """
+            mutation TriggerDeployV2($serviceId: String!, $environmentId: String!) {
+                serviceInstanceDeployV2(
+                    serviceId: $serviceId,
+                    environmentId: $environmentId
+                ) { id status }
+            }
+            """,
+            {"serviceId": service_id, "environmentId": environment_id},
+        )
+        return data.get("serviceInstanceDeployV2") or {}
+
+    def service_instance_redeploy(self, service_id: str, environment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation RedeployLatest($serviceId: String!, $environmentId: String!) {
+                serviceInstanceRedeploy(
+                    serviceId: $serviceId,
+                    environmentId: $environmentId
+                )
+            }
+            """,
+            {"serviceId": service_id, "environmentId": environment_id},
+        )
+        return bool(data.get("serviceInstanceRedeploy"))
+
+    def deployment_redeploy(self, deployment_id: str) -> dict:
+        data = self.query(
+            """
+            mutation RedeployDeployment($id: String!) {
+                deploymentRedeploy(id: $id) { id status }
+            }
+            """,
+            {"id": deployment_id},
+        )
+        return data.get("deploymentRedeploy") or {}
+
+    def deployment_remove(self, deployment_id: str) -> bool:
+        data = self.query(
+            """
+            mutation RemoveDeployment($id: String!) {
+                deploymentRemove(id: $id)
+            }
+            """,
+            {"id": deployment_id},
+        )
+        return bool(data.get("deploymentRemove"))
+
+    # ------------------------------------------------------------------
+    # Logs — HTTP logs & environment logs
+    # ------------------------------------------------------------------
+
+    def http_logs(self, deployment_id: str, limit: int = 100) -> list[dict]:
+        data = self.query(
+            """
+            query GetHttpLogs($deploymentId: String!, $limit: Int!) {
+                httpLogs(deploymentId: $deploymentId, limit: $limit) {
+                    timestamp
+                    requestId
+                    method
+                    path
+                    httpStatus
+                    totalDuration
+                    srcIp
+                }
+            }
+            """,
+            {"deploymentId": deployment_id, "limit": limit},
+        )
+        return data.get("httpLogs") or []
+
+    def environment_logs(
+        self, environment_id: str, project_id: str, limit: int = 100, filter_text: str | None = None
+    ) -> list[dict]:
+        variables: dict = {
+            "environmentId": environment_id,
+            "projectId": project_id,
+            "limit": limit,
+        }
+        if filter_text:
+            variables["filter"] = filter_text
+
+        data = self.query(
+            """
+            query GetEnvironmentLogs(
+                $environmentId: String!, $projectId: String!, $limit: Int!,
+                $filter: String
+            ) {
+                environmentLogs(
+                    environmentId: $environmentId,
+                    projectId: $projectId,
+                    limit: $limit,
+                    filter: $filter
+                ) {
+                    message
+                    severity
+                    timestamp
+                    serviceName
+                }
+            }
+            """,
+            variables,
+        )
+        return data.get("environmentLogs") or []
+
+    # ------------------------------------------------------------------
+    # Domains — check, DNS status, update, delete railway domain
+    # ------------------------------------------------------------------
+
+    def custom_domain_available(self, domain: str) -> dict:
+        data = self.query(
+            """
+            query CheckDomain($domain: String!) {
+                customDomainAvailable(domain: $domain) {
+                    available
+                    message
+                }
+            }
+            """,
+            {"domain": domain},
+        )
+        return data.get("customDomainAvailable") or {}
+
+    def custom_domain_status(self, domain_id: str, project_id: str) -> dict:
+        data = self.query(
+            """
+            query GetDomainStatus($id: String!, $projectId: String!) {
+                customDomain(id: $id, projectId: $projectId) {
+                    id
+                    domain
+                    status {
+                        dnsRecords { hostlabel requiredValue currentValue status }
+                        certificateStatus
+                    }
+                }
+            }
+            """,
+            {"id": domain_id, "projectId": project_id},
+        )
+        return data.get("customDomain") or {}
+
+    def custom_domain_update(
+        self, domain_id: str, environment_id: str, target_port: int
+    ) -> bool:
+        data = self.query(
+            """
+            mutation UpdateCustomDomain(
+                $id: String!, $environmentId: String!, $targetPort: Int!
+            ) {
+                customDomainUpdate(
+                    id: $id,
+                    input: { environmentId: $environmentId, targetPort: $targetPort }
+                )
+            }
+            """,
+            {"id": domain_id, "environmentId": environment_id, "targetPort": target_port},
+        )
+        return bool(data.get("customDomainUpdate"))
+
+    def service_domain_delete(self, domain_id: str) -> bool:
+        data = self.query(
+            """
+            mutation DeleteServiceDomain($id: String!) {
+                serviceDomainDelete(id: $id)
+            }
+            """,
+            {"id": domain_id},
+        )
+        return bool(data.get("serviceDomainDelete"))
+
+    # ------------------------------------------------------------------
+    # Variables — resolved at deploy time
+    # ------------------------------------------------------------------
+
+    def variables_resolved(
+        self, project_id: str, environment_id: str, service_id: str
+    ) -> dict:
+        data = self.query(
+            """
+            query GetResolvedVars(
+                $projectId: String!, $environmentId: String!, $serviceId: String!
+            ) {
+                variablesForServiceDeployment(
+                    projectId: $projectId,
+                    environmentId: $environmentId,
+                    serviceId: $serviceId
+                )
+            }
+            """,
+            {
+                "projectId": project_id,
+                "environmentId": environment_id,
+                "serviceId": service_id,
+            },
+        )
+        return data.get("variablesForServiceDeployment") or {}
+
+    # ------------------------------------------------------------------
+    # Volumes — update, mount, backups
+    # ------------------------------------------------------------------
+
+    def volume_update(self, volume_id: str, name: str) -> bool:
+        data = self.query(
+            """
+            mutation UpdateVolume($volumeId: String!, $input: VolumeUpdateInput!) {
+                volumeUpdate(volumeId: $volumeId, input: $input) { id name }
+            }
+            """,
+            {"volumeId": volume_id, "input": {"name": name}},
+        )
+        return bool(data.get("volumeUpdate"))
+
+    def volume_instance_update(
+        self, volume_id: str, mount_path: str
+    ) -> bool:
+        data = self.query(
+            """
+            mutation UpdateVolumeInstance(
+                $volumeId: String!, $input: VolumeInstanceUpdateInput!
+            ) {
+                volumeInstanceUpdate(volumeId: $volumeId, input: $input)
+            }
+            """,
+            {"volumeId": volume_id, "input": {"mountPath": mount_path}},
+        )
+        return bool(data.get("volumeInstanceUpdate"))
+
+    def volume_instance_info(self, volume_instance_id: str) -> dict:
+        data = self.query(
+            """
+            query GetVolumeInstance($id: String!) {
+                volumeInstance(id: $id) {
+                    id
+                    mountPath
+                    currentSizeMB
+                    state
+                    volume { id name }
+                    serviceInstance { serviceName }
+                }
+            }
+            """,
+            {"id": volume_instance_id},
+        )
+        return data.get("volumeInstance") or {}
+
+    def volume_backup_list(self, volume_instance_id: str) -> list[dict]:
+        data = self.query(
+            """
+            query GetVolumeBackups($volumeInstanceId: String!) {
+                volumeInstanceBackupList(volumeInstanceId: $volumeInstanceId) {
+                    id
+                    name
+                    createdAt
+                    expiresAt
+                    usedMB
+                    referencedMB
+                }
+            }
+            """,
+            {"volumeInstanceId": volume_instance_id},
+        )
+        return data.get("volumeInstanceBackupList") or []
+
+    def volume_backup_create(self, volume_instance_id: str) -> dict:
+        data = self.query(
+            """
+            mutation CreateVolumeBackup($volumeInstanceId: String!) {
+                volumeInstanceBackupCreate(volumeInstanceId: $volumeInstanceId)
+            }
+            """,
+            {"volumeInstanceId": volume_instance_id},
+        )
+        return data.get("volumeInstanceBackupCreate") or {}
+
+    def volume_backup_restore(
+        self, backup_id: str, volume_instance_id: str
+    ) -> bool:
+        data = self.query(
+            """
+            mutation RestoreVolumeBackup(
+                $volumeInstanceBackupId: String!, $volumeInstanceId: String!
+            ) {
+                volumeInstanceBackupRestore(
+                    volumeInstanceBackupId: $volumeInstanceBackupId,
+                    volumeInstanceId: $volumeInstanceId
+                )
+            }
+            """,
+            {
+                "volumeInstanceBackupId": backup_id,
+                "volumeInstanceId": volume_instance_id,
+            },
+        )
+        return bool(data.get("volumeInstanceBackupRestore"))
+
+    def volume_backup_delete(
+        self, backup_id: str, volume_instance_id: str
+    ) -> bool:
+        data = self.query(
+            """
+            mutation DeleteVolumeBackup(
+                $volumeInstanceBackupId: String!, $volumeInstanceId: String!
+            ) {
+                volumeInstanceBackupDelete(
+                    volumeInstanceBackupId: $volumeInstanceBackupId,
+                    volumeInstanceId: $volumeInstanceId
+                )
+            }
+            """,
+            {
+                "volumeInstanceBackupId": backup_id,
+                "volumeInstanceId": volume_instance_id,
+            },
+        )
+        return bool(data.get("volumeInstanceBackupDelete"))
+
+    # ------------------------------------------------------------------
+    # Environments — info, staged changes
+    # ------------------------------------------------------------------
+
+    def environment_info(self, environment_id: str) -> dict:
+        data = self.query(
+            """
+            query GetEnvironment($id: String!) {
+                environment(id: $id) {
+                    id
+                    name
+                    createdAt
+                    serviceInstances {
+                        edges {
+                            node {
+                                serviceId
+                                latestDeployment { id status createdAt }
+                            }
+                        }
+                    }
+                }
+            }
+            """,
+            {"id": environment_id},
+        )
+        return data.get("environment") or {}
+
+    def environment_staged_changes(self, environment_id: str) -> list[dict]:
+        data = self.query(
+            """
+            query GetStagedChanges($id: String!) {
+                environmentStagedChanges(environmentId: $id) {
+                    serviceId
+                    variableChanges {
+                        name
+                        oldValue
+                        newValue
+                        action
+                    }
+                }
+            }
+            """,
+            {"id": environment_id},
+        )
+        return data.get("environmentStagedChanges") or []
+
+    # ------------------------------------------------------------------
+    # Service instance limits
+    # ------------------------------------------------------------------
+
+    def service_instance_limits(self, service_id: str, environment_id: str) -> dict:
+        data = self.query(
+            """
+            query GetServiceInstanceLimits($serviceId: String!, $environmentId: String!) {
+                serviceInstanceLimits(
+                    serviceId: $serviceId,
+                    environmentId: $environmentId
+                )
+            }
+            """,
+            {"serviceId": service_id, "environmentId": environment_id},
+        )
+        return data.get("serviceInstanceLimits") or {}

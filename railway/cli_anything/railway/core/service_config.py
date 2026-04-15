@@ -154,3 +154,37 @@ def set_root_dir(
 ):
     """Set the root directory for a service."""
     _update(ctx, service_id, environment_id, {"rootDirectory": directory}, as_json)
+
+
+@service_config_group.command("limits")
+@click.argument("service_id")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def service_config_limits(
+    ctx: click.Context, service_id: str, environment_id: str, as_json: bool
+):
+    """Show resource allocation limits for a service instance."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        limits = backend.service_instance_limits(service_id, environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(limits, indent=2))
+        return
+
+    if not limits:
+        skin.info("No limits data returned.")
+        return
+
+    if isinstance(limits, dict):
+        skin.status_block(
+            {k: str(v) for k, v in limits.items()},
+            title="Service Instance Limits",
+        )
+    else:
+        skin.info(str(limits))

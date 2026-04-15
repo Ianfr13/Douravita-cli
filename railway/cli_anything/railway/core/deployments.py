@@ -17,14 +17,15 @@ def deployments_group():
 
 @deployments_group.command("list")
 @click.option("--service", "service_id", required=True, help="Service ID.")
+@click.option("--env", "environment_id", default=None, help="Environment ID (optional filter).")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
-def deployments_list(ctx: click.Context, service_id: str, as_json: bool):
+def deployments_list(ctx: click.Context, service_id: str, environment_id: str | None, as_json: bool):
     """List deployments for a service."""
     backend: RailwayBackend = ctx.obj["backend"]
     skin = ctx.obj["skin"]
     try:
-        deployments = backend.deployments_list(service_id)
+        deployments = backend.deployments_list(service_id, environment_id)
     except RailwayAPIError as exc:
         skin.error(str(exc))
         sys.exit(1)
@@ -208,3 +209,106 @@ def deployments_stop(
         skin.success(f"Deployment stopped for service {service_id}.")
     else:
         skin.warning("Stop returned false — check Railway dashboard.")
+
+
+@deployments_group.command("trigger-v2")
+@click.argument("service_id")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_trigger_v2(
+    ctx: click.Context, service_id: str, environment_id: str, as_json: bool
+):
+    """Trigger a deployment and return the deployment ID."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_trigger_v2(service_id, environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    dep_id = result.get("id", "")
+    status = result.get("status", "")
+    skin.success(f"Deployment triggered: {dep_id} (status: {status})")
+
+
+@deployments_group.command("redeploy")
+@click.argument("deployment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_redeploy(ctx: click.Context, deployment_id: str, as_json: bool):
+    """Redeploy an existing deployment."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_redeploy(deployment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    new_id = result.get("id", "")
+    status = result.get("status", "")
+    if new_id:
+        skin.success(f"Deployment redeployed: {new_id} (status: {status})")
+    else:
+        skin.warning("Redeploy returned empty — check Railway dashboard.")
+
+
+@deployments_group.command("redeploy-latest")
+@click.argument("service_id")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_redeploy_latest(
+    ctx: click.Context, service_id: str, environment_id: str, as_json: bool
+):
+    """Redeploy the latest deployment for a service."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.service_instance_redeploy(service_id, environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"redeployed": result, "serviceId": service_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Latest deployment redeployed for service {service_id}.")
+    else:
+        skin.warning("Redeploy returned false — check Railway dashboard.")
+
+
+@deployments_group.command("remove")
+@click.argument("deployment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def deployments_remove(ctx: click.Context, deployment_id: str, as_json: bool):
+    """Remove a deployment from history."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.deployment_remove(deployment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"removed": result, "deploymentId": deployment_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Deployment {deployment_id} removed from history.")
+    else:
+        skin.warning("Remove returned false — check Railway dashboard.")

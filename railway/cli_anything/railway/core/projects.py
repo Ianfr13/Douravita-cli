@@ -191,3 +191,67 @@ def projects_delete(ctx: click.Context, project_id: str, yes: bool, as_json: boo
         skin.success(f"Project {project_id} deleted.")
     else:
         skin.warning("Delete returned false — check Railway dashboard.")
+
+
+@projects_group.command("members")
+@click.argument("project_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def projects_members(ctx: click.Context, project_id: str, as_json: bool):
+    """List members of a project."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        members = backend.project_members(project_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(members, indent=2))
+        return
+
+    if not members:
+        skin.info("No members found.")
+        return
+
+    skin.table(
+        ["Member ID", "Role", "User ID", "Name", "Email"],
+        [
+            [
+                m.get("id", ""),
+                m.get("role", ""),
+                (m.get("user") or {}).get("id", ""),
+                (m.get("user") or {}).get("name", ""),
+                (m.get("user") or {}).get("email", ""),
+            ]
+            for m in members
+        ],
+    )
+
+
+@projects_group.command("transfer")
+@click.argument("project_id")
+@click.option("--workspace", "workspace_id", required=True, help="Target workspace ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def projects_transfer(
+    ctx: click.Context, project_id: str, workspace_id: str, as_json: bool
+):
+    """Transfer a project to another workspace."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.project_transfer(project_id, workspace_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"transferred": result, "projectId": project_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Project {project_id} transferred to workspace {workspace_id}.")
+    else:
+        skin.warning("Transfer returned false — check Railway dashboard.")

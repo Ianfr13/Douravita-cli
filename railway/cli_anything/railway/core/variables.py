@@ -173,3 +173,42 @@ def variables_bulk_set(
         skin.success(f"{len(variables)} variable(s) set successfully: {', '.join(variables.keys())}")
     else:
         skin.warning("Bulk upsert returned false.")
+
+
+@variables_group.command("resolved")
+@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--service", "service_id", required=True, help="Service ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def variables_resolved(
+    ctx: click.Context,
+    project_id: str,
+    environment_id: str,
+    service_id: str,
+    as_json: bool,
+):
+    """Show fully resolved variables as they appear at deploy time."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        variables = backend.variables_resolved(project_id, environment_id, service_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(variables, indent=2))
+        return
+
+    if not variables:
+        skin.info("No resolved variables found.")
+        return
+
+    if isinstance(variables, dict):
+        skin.table(
+            ["Key", "Resolved Value"],
+            [[k, str(v)] for k, v in variables.items()],
+        )
+    else:
+        skin.info(str(variables))

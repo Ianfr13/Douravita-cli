@@ -131,3 +131,130 @@ def domains_generate(
     skin.success(
         f"Railway domain generated: {result.get('domain')} (id: {result.get('id')})"
     )
+
+
+@domains_group.command("delete-railway")
+@click.argument("domain_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def domains_delete_railway(ctx: click.Context, domain_id: str, as_json: bool):
+    """Delete a Railway-generated service domain by ID."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.service_domain_delete(domain_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"deleted": result, "id": domain_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Railway domain {domain_id} deleted.")
+    else:
+        skin.warning(f"Domain delete returned false for {domain_id}.")
+
+
+@domains_group.command("check")
+@click.argument("domain")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def domains_check(ctx: click.Context, domain: str, as_json: bool):
+    """Check if a custom domain is available."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.custom_domain_available(domain)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    available = result.get("available", False)
+    message = result.get("message", "")
+    if available:
+        skin.success(f"Domain '{domain}' is available.")
+    else:
+        skin.warning(f"Domain '{domain}' is not available: {message}")
+
+
+@domains_group.command("dns-status")
+@click.argument("domain_id")
+@click.option("--project", "project_id", required=True, help="Project ID.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def domains_dns_status(ctx: click.Context, domain_id: str, project_id: str, as_json: bool):
+    """Show DNS records and certificate status for a custom domain."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.custom_domain_status(domain_id, project_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    if not result:
+        skin.error(f"Domain not found: {domain_id}")
+        sys.exit(1)
+
+    status = result.get("status") or {}
+    skin.status_block(
+        {
+            "Domain": result.get("domain", ""),
+            "Certificate": status.get("certificateStatus") or "",
+        },
+        title="Domain DNS Status",
+    )
+
+    dns_records = status.get("dnsRecords") or []
+    if dns_records:
+        skin.section("DNS Records")
+        skin.table(
+            ["Host Label", "Required Value", "Current Value", "Status"],
+            [
+                [
+                    r.get("hostlabel", ""),
+                    r.get("requiredValue", ""),
+                    r.get("currentValue") or "",
+                    r.get("status") or "",
+                ]
+                for r in dns_records
+            ],
+        )
+
+
+@domains_group.command("update")
+@click.argument("domain_id")
+@click.option("--env", "environment_id", required=True, help="Environment ID.")
+@click.option("--target-port", type=int, required=True, help="New target port.")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def domains_update(
+    ctx: click.Context, domain_id: str, environment_id: str, target_port: int, as_json: bool
+):
+    """Update a custom domain's target port."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        result = backend.custom_domain_update(domain_id, environment_id, target_port)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps({"updated": result, "id": domain_id}, indent=2))
+        return
+
+    if result:
+        skin.success(f"Domain {domain_id} updated (port: {target_port}).")
+    else:
+        skin.warning("Update returned false — check Railway dashboard.")

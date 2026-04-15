@@ -124,3 +124,94 @@ def environments_rename(ctx: click.Context, environment_id: str, name: str, as_j
         skin.success(f"Environment {environment_id} renamed to '{name}'.")
     else:
         skin.warning("Rename returned false — check Railway dashboard.")
+
+
+@environments_group.command("info")
+@click.argument("environment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def environments_info(ctx: click.Context, environment_id: str, as_json: bool):
+    """Show details for a single environment."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        env = backend.environment_info(environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(env, indent=2))
+        return
+
+    if not env:
+        skin.error(f"Environment not found: {environment_id}")
+        sys.exit(1)
+
+    skin.status_block(
+        {
+            "ID": env.get("id", ""),
+            "Name": env.get("name", ""),
+            "Created": (env.get("createdAt") or "")[:19],
+        },
+        title="Environment",
+    )
+
+    instances = [
+        e["node"]
+        for e in (env.get("serviceInstances") or {}).get("edges", [])
+    ]
+    if instances:
+        skin.section("Service Instances")
+        rows = []
+        for inst in instances:
+            dep = inst.get("latestDeployment") or {}
+            rows.append([
+                inst.get("serviceId", ""),
+                dep.get("status") or "",
+                (dep.get("createdAt") or "")[:19],
+            ])
+        skin.table(["Service ID", "Deploy Status", "Deploy Created"], rows)
+
+
+@environments_group.command("staged-changes")
+@click.argument("environment_id")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+@click.pass_context
+def environments_staged_changes(ctx: click.Context, environment_id: str, as_json: bool):
+    """Show pending variable changes awaiting deployment."""
+    backend: RailwayBackend = ctx.obj["backend"]
+    skin = ctx.obj["skin"]
+    try:
+        changes = backend.environment_staged_changes(environment_id)
+    except RailwayAPIError as exc:
+        skin.error(str(exc))
+        sys.exit(1)
+
+    if as_json:
+        click.echo(json.dumps(changes, indent=2))
+        return
+
+    if not changes:
+        skin.info("No staged changes.")
+        return
+
+    for group in changes:
+        svc_id = group.get("serviceId") or "shared"
+        skin.section(f"Service: {svc_id}")
+        var_changes = group.get("variableChanges") or []
+        if var_changes:
+            skin.table(
+                ["Variable", "Action", "Old Value", "New Value"],
+                [
+                    [
+                        c.get("name", ""),
+                        c.get("action", ""),
+                        c.get("oldValue") or "",
+                        c.get("newValue") or "",
+                    ]
+                    for c in var_changes
+                ],
+            )
+        else:
+            skin.info("  No variable changes.")
