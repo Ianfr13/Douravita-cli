@@ -14,6 +14,18 @@ from cli_anything.infisical.utils.infisical_backend import (
 )
 from cli_anything.infisical.core.secrets import SecretsClient
 from cli_anything.infisical.core.projects import ProjectsClient
+from cli_anything.infisical.core.secrets_ext import secrets_ext_group
+from cli_anything.infisical.core.folders import folders_group
+from cli_anything.infisical.core.environments import environments_group
+from cli_anything.infisical.core.projects_ext import projects_ext_group
+from cli_anything.infisical.core.snapshots import snapshots_group
+from cli_anything.infisical.core.tags import tags_group
+from cli_anything.infisical.core.secret_imports import secret_imports_group
+from cli_anything.infisical.core.identities import identities_group, auth_group
+from cli_anything.infisical.core.audit import audit_group
+from cli_anything.infisical.core.dynamic_secrets import dynamic_secrets_group
+from cli_anything.infisical.core.groups import groups_group
+from cli_anything.infisical.core.app_connections import app_connections_group
 from cli_anything.infisical.utils.repl_skin import ReplSkin
 
 # ---------------------------------------------------------------------------
@@ -443,3 +455,22 @@ def projects_create(
     else:
         pid = result.get("id") or result.get("_id", "")
         skin.success(f"Project '{name}' created (id: {pid}).")
+
+
+# ---------------------------------------------------------------------------
+# Register extended groups from core/*.py modules
+# ---------------------------------------------------------------------------
+
+main.add_command(secrets_ext_group)
+main.add_command(folders_group)
+main.add_command(environments_group)
+main.add_command(projects_ext_group)
+main.add_command(snapshots_group)
+main.add_command(tags_group)
+main.add_command(secret_imports_group)
+main.add_command(identities_group)
+main.add_command(auth_group)
+main.add_command(audit_group)
+main.add_command(dynamic_secrets_group)
+main.add_command(groups_group)
+main.add_command(app_connections_group)

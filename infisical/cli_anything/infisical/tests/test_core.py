@@ -627,3 +627,326 @@ class TestCLICommands:
 
         assert result.exit_code != 0
         assert "404" in result.output + (result.output or "")
+
+
+# ---------------------------------------------------------------------------
+# Extended CLI groups — smoke tests (one or two per group)
+# ---------------------------------------------------------------------------
+
+def _common():
+    return [
+        "--token", TOKEN,
+        "--workspace", WORKSPACE_ID,
+        "--env", ENV,
+        "--url", BASE_URL,
+    ]
+
+
+def _patch_backend():
+    """Patch InfisicalBackend in the main CLI module (where ctx.backend() instantiates it)."""
+    return patch("cli_anything.infisical.infisical_cli.InfisicalBackend")
+
+
+class TestSecretsExt:
+    def test_delete(self):
+        with _patch_backend() as MB:
+            MB.return_value.delete_secret.return_value = {"secretKey": "FOO"}
+            result = CliRunner().invoke(main, _common() + ["secrets-x", "delete", "FOO"])
+        assert result.exit_code == 0
+        MB.return_value.delete_secret.assert_called_once()
+
+    def test_rename(self):
+        with _patch_backend() as MB:
+            MB.return_value.update_secret.return_value = {"secretKey": "BAR"}
+            result = CliRunner().invoke(main, _common() + ["secrets-x", "rename", "FOO", "BAR"])
+        assert result.exit_code == 0
+        call = MB.return_value.update_secret.call_args
+        assert call.kwargs.get("new_secret_name") == "BAR"
+
+    def test_bulk_delete(self):
+        with _patch_backend() as MB:
+            MB.return_value.bulk_delete_secrets.return_value = {"secrets": []}
+            result = CliRunner().invoke(main, _common() + ["secrets-x", "bulk-delete", "A", "B", "C"])
+        assert result.exit_code == 0
+        MB.return_value.bulk_delete_secrets.assert_called_once()
+
+
+class TestFolders:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_folders.return_value = [
+                {"id": "f1", "name": "prod", "envId": "e1"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["folders", "list"])
+        assert result.exit_code == 0
+        assert "prod" in result.output
+
+    def test_create_json(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_folder.return_value = {"id": "f-new", "name": "secrets"}
+            result = CliRunner().invoke(
+                main, _common() + ["folders", "create", "secrets", "--json"]
+            )
+        assert result.exit_code == 0
+        assert json.loads(result.output)["id"] == "f-new"
+
+
+class TestEnvironments:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_environments.return_value = [
+                {"id": "e1", "name": "Development", "slug": "dev", "position": 1}
+            ]
+            result = CliRunner().invoke(main, _common() + ["environments", "list"])
+        assert result.exit_code == 0
+        assert "dev" in result.output
+
+    def test_create(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_environment.return_value = {"id": "e2", "slug": "staging"}
+            result = CliRunner().invoke(
+                main, _common() + ["environments", "create", "Staging", "staging"]
+            )
+        assert result.exit_code == 0
+
+
+class TestProjectsExt:
+    def test_info(self):
+        with _patch_backend() as MB:
+            MB.return_value.get_workspace.return_value = {"id": WORKSPACE_ID, "name": "App"}
+            result = CliRunner().invoke(main, _common() + ["projects-x", "info"])
+        assert result.exit_code == 0
+
+    def test_members_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_workspace_memberships.return_value = [
+                {"id": "m1", "user": {"email": "a@b.com"}, "roles": [{"role": "admin"}]}
+            ]
+            result = CliRunner().invoke(main, _common() + ["projects-x", "members", "list"])
+        assert result.exit_code == 0
+
+
+class TestSnapshots:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_snapshots.return_value = [
+                {"id": "s1", "environment": "dev", "createdAt": "2024-01-01"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["snapshots", "list"])
+        assert result.exit_code == 0
+        assert "s1" in result.output
+
+    def test_rollback_requires_yes(self):
+        with _patch_backend() as MB:
+            result = CliRunner().invoke(main, _common() + ["snapshots", "rollback", "s1"])
+        assert result.exit_code != 0 or "--yes" in result.output.lower() or "confirm" in result.output.lower()
+
+
+class TestTags:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_tags.return_value = [{"id": "t1", "slug": "prod", "color": "#000"}]
+            result = CliRunner().invoke(main, _common() + ["tags", "list"])
+        assert result.exit_code == 0
+        assert "prod" in result.output
+
+    def test_create(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_tag.return_value = {"id": "t2", "slug": "prod"}
+            result = CliRunner().invoke(main, _common() + ["tags", "create", "prod", "--color", "#FF0000"])
+        assert result.exit_code == 0
+
+
+class TestSecretImports:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_secret_imports.return_value = [
+                {"id": "i1", "importEnv": {"slug": "prod"}, "importPath": "/"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["imports", "list"])
+        assert result.exit_code == 0
+
+    def test_create(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_secret_import.return_value = {"id": "i2"}
+            result = CliRunner().invoke(
+                main, _common() + ["imports", "create", "--from-env", "prod", "--from-path", "/"]
+            )
+        assert result.exit_code == 0
+
+
+class TestIdentities:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_identities.return_value = [{"id": "id1", "name": "ci-bot"}]
+            result = CliRunner().invoke(
+                main, _common() + ["identities", "list", "--org-id", "org-1"]
+            )
+        assert result.exit_code == 0
+        assert "ci-bot" in result.output
+
+    def test_create(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_identity.return_value = {"id": "id2", "name": "bot"}
+            result = CliRunner().invoke(
+                main, _common() + ["identities", "create", "bot", "--org-id", "org-1", "--role", "admin"]
+            )
+        assert result.exit_code == 0
+
+
+class TestAuth:
+    def test_login(self):
+        with _patch_backend() as MB:
+            MB.return_value.universal_auth_login.return_value = {"accessToken": "jwt-123"}
+            result = CliRunner().invoke(
+                main, _common() + ["auth", "login", "--client-id", "c1", "--client-secret", "s1"]
+            )
+        assert result.exit_code == 0
+        assert "jwt-123" in result.output
+
+    def test_attach_ua(self):
+        with _patch_backend() as MB:
+            MB.return_value.attach_universal_auth.return_value = {"id": "ua1"}
+            result = CliRunner().invoke(main, _common() + ["auth", "attach-ua", "id1"])
+        assert result.exit_code == 0
+
+
+class TestAudit:
+    def test_export(self):
+        with _patch_backend() as MB:
+            MB.return_value.export_audit_logs.return_value = [
+                {"createdAt": "2024-01-01", "actor": "u", "eventType": "secret-created", "ipAddress": "1.2.3.4"}
+            ]
+            result = CliRunner().invoke(
+                main, _common() + ["audit", "export", "--org-id", "org-1"]
+            )
+        assert result.exit_code == 0
+
+
+class TestDynamicSecrets:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_dynamic_secrets.return_value = [
+                {"id": "d1", "name": "pg", "status": "active", "defaultTTL": "1h", "maxTTL": "24h"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["dynamic-secrets", "list"])
+        assert result.exit_code == 0
+        assert "pg" in result.output
+
+    def test_leases_create(self):
+        with _patch_backend() as MB:
+            MB.return_value.create_dynamic_secret_lease.return_value = {
+                "lease": {"id": "l1"},
+                "data": {"username": "u", "password": "p"},
+            }
+            result = CliRunner().invoke(
+                main, _common() + ["dynamic-secrets", "leases", "create", "pg"]
+            )
+        assert result.exit_code == 0
+
+
+class TestGroups:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_groups.return_value = [
+                {"id": "g1", "name": "devs", "slug": "devs", "role": "member"}
+            ]
+            result = CliRunner().invoke(
+                main, _common() + ["groups", "list", "--org-id", "org-1"]
+            )
+        assert result.exit_code == 0
+        assert "devs" in result.output
+
+    def test_users_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_group_users.return_value = [
+                {"username": "alice", "email": "a@b.com", "role": "member", "isPartOfGroup": True}
+            ]
+            result = CliRunner().invoke(main, _common() + ["groups", "users", "list", "g1"])
+        assert result.exit_code == 0
+
+
+class TestAppConnections:
+    def test_list(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_app_connections.return_value = [
+                {"id": "ac1", "name": "aws-prod", "app": "aws", "method": "oauth2", "createdAt": "x"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["app-connections", "list"])
+        assert result.exit_code == 0
+        assert "aws-prod" in result.output
+
+    def test_options(self):
+        with _patch_backend() as MB:
+            MB.return_value.list_app_connection_options.return_value = [
+                {"app": "aws"}, {"app": "github"}
+            ]
+            result = CliRunner().invoke(main, _common() + ["app-connections", "options"])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Backend extension tests (direct backend calls, mocked HTTP)
+# ---------------------------------------------------------------------------
+
+class TestBackendExtensions:
+    def _backend(self):
+        return InfisicalBackend(base_url=BASE_URL, token=TOKEN)
+
+    def test_delete_secret_sends_delete_with_body(self):
+        b = self._backend()
+        b._session.delete = MagicMock(return_value=_mock_response({"secret": {"secretKey": "X"}}))
+        b.delete_secret("X", WORKSPACE_ID, ENV)
+        b._session.delete.assert_called_once()
+        call = b._session.delete.call_args
+        assert "workspaceId" in call.kwargs["json"]
+
+    def test_create_folder_posts_correct_path(self):
+        b = self._backend()
+        b._session.post = MagicMock(return_value=_mock_response({"folder": {"id": "f1"}}))
+        b.create_folder(WORKSPACE_ID, ENV, "subdir")
+        url = b._session.post.call_args.args[0]
+        assert url.endswith("/api/v1/folders")
+
+    def test_list_environments_returns_envs_from_workspace(self):
+        b = self._backend()
+        b._session.get = MagicMock(
+            return_value=_mock_response({"workspace": {"environments": [{"id": "e1", "slug": "dev"}]}})
+        )
+        envs = b.list_environments(WORKSPACE_ID)
+        assert envs[0]["slug"] == "dev"
+
+    def test_list_snapshots_forwards_params(self):
+        b = self._backend()
+        b._session.get = MagicMock(return_value=_mock_response({"secretSnapshots": []}))
+        b.list_snapshots(WORKSPACE_ID, environment="dev", limit=5, offset=10)
+        params = b._session.get.call_args.kwargs["params"]
+        assert params["environment"] == "dev"
+        assert params["limit"] == 5
+
+    def test_universal_auth_login_does_not_use_session_auth(self):
+        """Login swaps creds for a token — should not send the Bearer header."""
+        b = self._backend()
+        with patch("cli_anything.infisical.utils.infisical_backend.requests.post") as mock_post:
+            mock_post.return_value = _mock_response({"accessToken": "new-jwt"})
+            result = b.universal_auth_login("cid", "csec")
+        assert result["accessToken"] == "new-jwt"
+
+    def test_create_dynamic_secret_lease_posts(self):
+        b = self._backend()
+        b._session.post = MagicMock(return_value=_mock_response({"lease": {"id": "l1"}}))
+        b.create_dynamic_secret_lease("pg", "proj", "dev")
+        assert b._session.post.call_args.args[0].endswith("/api/v1/dynamic-secrets/leases")
+
+    def test_list_tags_returns_workspace_tags(self):
+        b = self._backend()
+        b._session.get = MagicMock(return_value=_mock_response({"workspaceTags": [{"id": "t1"}]}))
+        tags = b.list_tags(WORKSPACE_ID)
+        assert tags[0]["id"] == "t1"
+
+    def test_export_audit_logs_builds_path(self):
+        b = self._backend()
+        b._session.get = MagicMock(return_value=_mock_response({"auditLogs": []}))
+        b.export_audit_logs("org-1", limit=50)
+        url = b._session.get.call_args.args[0]
+        assert "/organization/org-1/audit-logs" in url
