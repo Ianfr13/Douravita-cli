@@ -1657,3 +1657,104 @@ class RailwayBackend:
             {"serviceId": service_id, "environmentId": environment_id},
         )
         return data.get("serviceInstanceLimits") or {}
+
+    # ------------------------------------------------------------------
+    # SSH public keys (account-level)
+    # ------------------------------------------------------------------
+
+    def ssh_keys_list(self) -> list[dict]:
+        data = self.query(
+            """
+            query {
+                sshPublicKeys {
+                    edges { node { id name fingerprint publicKey createdAt } }
+                }
+            }
+            """
+        )
+        return [edge["node"] for edge in (data.get("sshPublicKeys") or {}).get("edges", [])]
+
+    def ssh_key_create(self, name: str, public_key: str) -> dict:
+        data = self.query(
+            """
+            mutation CreateSshKey($input: SshPublicKeyCreateInput!) {
+                sshPublicKeyCreate(input: $input) {
+                    id name fingerprint publicKey createdAt
+                }
+            }
+            """,
+            {"input": {"name": name, "publicKey": public_key}},
+        )
+        return data.get("sshPublicKeyCreate") or {}
+
+    def ssh_key_delete(self, ssh_key_id: str) -> bool:
+        data = self.query(
+            """
+            mutation DeleteSshKey($id: String!) {
+                sshPublicKeyDelete(id: $id)
+            }
+            """,
+            {"id": ssh_key_id},
+        )
+        return bool(data.get("sshPublicKeyDelete"))
+
+    def github_ssh_keys(self) -> list[dict]:
+        data = self.query(
+            """
+            query { gitHubSshKeys { id title key } }
+            """
+        )
+        return data.get("gitHubSshKeys") or []
+
+    # ------------------------------------------------------------------
+    # Variables resolved at deploy time (for `run` / `shell`)
+    # ------------------------------------------------------------------
+
+    def variables_for_deployment(
+        self, project_id: str, environment_id: str, service_id: str
+    ) -> dict:
+        """Alias for variables_resolved — used by local command execution."""
+        return self.variables_resolved(project_id, environment_id, service_id)
+
+    # ------------------------------------------------------------------
+    # Deployment instance execution (SSH relay session)
+    # ------------------------------------------------------------------
+
+    def deployment_instance_execution_create(self, deployment_id: str) -> dict:
+        """Open a remote execution session on a deployment.
+
+        Returns metadata (id, status, deploymentId). The actual stdio happens
+        over the WebSocket relay — see ``utils.railway_relay``.
+        """
+        data = self.query(
+            """
+            mutation CreateExecution($input: DeploymentInstanceExecutionInput!) {
+                deploymentInstanceExecutionCreate(input: $input) {
+                    id
+                    deploymentId
+                    status
+                    createdAt
+                }
+            }
+            """,
+            {"input": {"deploymentId": deployment_id}},
+        )
+        return data.get("deploymentInstanceExecutionCreate") or {}
+
+    def deployment_instance_list(
+        self, deployment_id: str
+    ) -> list[dict]:
+        """List instances (for picking a deployment_instance_id for SSH)."""
+        data = self.query(
+            """
+            query GetDeploymentInstances($id: String!) {
+                deployment(id: $id) {
+                    id
+                    status
+                    createdAt
+                }
+            }
+            """,
+            {"id": deployment_id},
+        )
+        return [data.get("deployment") or {}]

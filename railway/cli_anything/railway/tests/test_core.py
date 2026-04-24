@@ -1855,3 +1855,198 @@ class TestLogsStreamModule:
                 token="t", query="q", variables={},
                 result_key="x", on_entry=lambda e: None,
             )
+
+
+# ---------------------------------------------------------------------------
+# run/shell/exec/ssh — local + remote execution (Railway v1.2.0 refine)
+# ---------------------------------------------------------------------------
+
+class TestRelayProtocol:
+    def test_decode_buffer_form(self):
+        from cli_anything.railway.utils.railway_relay import _decode_payload_data
+        assert _decode_payload_data(
+            {"data": {"type": "Buffer", "data": [104, 105]}}
+        ) == b"hi"
+
+    def test_decode_string_form(self):
+        from cli_anything.railway.utils.railway_relay import _decode_payload_data
+        assert _decode_payload_data({"data": "hello"}) == b"hello"
+
+    def test_decode_list_form(self):
+        from cli_anything.railway.utils.railway_relay import _decode_payload_data
+        assert _decode_payload_data({"data": [65, 66, 67]}) == b"ABC"
+
+    def test_decode_empty(self):
+        from cli_anything.railway.utils.railway_relay import _decode_payload_data
+        assert _decode_payload_data({}) == b""
+
+    def test_headers_include_railway_scoping(self):
+        from cli_anything.railway.utils.railway_relay import _headers
+        h = _headers(
+            token="tok", project_id="p1", service_id="s1",
+            environment_id="e1", deployment_instance_id="d1",
+        )
+        assert h["Authorization"] == "Bearer tok"
+        assert h["X-Railway-Project-Id"] == "p1"
+        assert h["X-Railway-Service-Id"] == "s1"
+        assert h["X-Railway-Environment-Id"] == "e1"
+        assert h["X-Railway-Deployment-Instance-Id"] == "d1"
+
+    def test_headers_drop_optional_instance(self):
+        from cli_anything.railway.utils.railway_relay import _headers
+        h = _headers(token="t", project_id="p", service_id="s", environment_id="e")
+        assert "X-Railway-Deployment-Instance-Id" not in h
+
+    def test_relay_error_when_ws_missing(self, monkeypatch):
+        from cli_anything.railway.utils import railway_relay
+        monkeypatch.setattr(railway_relay, "_WS_AVAILABLE", False)
+        with pytest.raises(railway_relay.RelayError):
+            railway_relay.exec_command(
+                token="t", project_id="p", service_id="s",
+                environment_id="e", command="ls",
+            )
+
+
+class TestBackendSshKeysAndExec:
+    def test_ssh_keys_list(self):
+        from cli_anything.railway.utils.railway_backend import RailwayBackend
+        from unittest.mock import patch
+        with patch.object(RailwayBackend, "query", return_value={
+            "sshPublicKeys": {"edges": [
+                {"node": {"id": "k1", "name": "macbook", "fingerprint": "SHA256:x"}},
+            ]},
+        }):
+            keys = RailwayBackend("t").ssh_keys_list()
+        assert keys[0]["name"] == "macbook"
+
+    def test_ssh_key_create(self):
+        from cli_anything.railway.utils.railway_backend import RailwayBackend
+        from unittest.mock import patch
+        with patch.object(RailwayBackend, "query", return_value={
+            "sshPublicKeyCreate": {"id": "k2", "name": "laptop"},
+        }):
+            assert RailwayBackend("t").ssh_key_create("laptop", "ssh-ed25519 AAAA")["id"] == "k2"
+
+    def test_ssh_key_delete(self):
+        from cli_anything.railway.utils.railway_backend import RailwayBackend
+        from unittest.mock import patch
+        with patch.object(RailwayBackend, "query", return_value={"sshPublicKeyDelete": True}):
+            assert RailwayBackend("t").ssh_key_delete("k1") is True
+
+    def test_deployment_instance_execution_create(self):
+        from cli_anything.railway.utils.railway_backend import RailwayBackend
+        from unittest.mock import patch
+        with patch.object(RailwayBackend, "query", return_value={
+            "deploymentInstanceExecutionCreate": {
+                "id": "exec-1", "deploymentId": "dep-1", "status": "running",
+            }
+        }):
+            out = RailwayBackend("t").deployment_instance_execution_create("dep-1")
+        assert out["status"] == "running"
+
+    def test_variables_for_deployment_aliases_resolved(self):
+        from cli_anything.railway.utils.railway_backend import RailwayBackend
+        from unittest.mock import patch
+        with patch.object(RailwayBackend, "query", return_value={
+            "variablesForServiceDeployment": {"FOO": "bar", "PORT": "3000"},
+        }):
+            out = RailwayBackend("t").variables_for_deployment("p", "e", "s")
+        assert out["FOO"] == "bar"
+
+
+def _remote_ctx(backend, project_id="proj-1", environment_id="env-1"):
+    from cli_anything.railway.utils.repl_skin import ReplSkin
+    return {
+        "backend": backend,
+        "skin": ReplSkin("railway"),
+        "project_id": project_id,
+        "environment_id": environment_id,
+    }
+
+
+class TestRunShellExecCLI:
+    def test_run_print_env(self):
+        from click.testing import CliRunner
+        from cli_anything.railway.core.remote import run_command
+        from unittest.mock import MagicMock
+        backend = MagicMock()
+        backend.services_list.return_value = [{"id": "svc-1", "name": "web"}]
+        backend.variables_for_deployment.return_value = {"FOO": "bar", "X": "y"}
+        result = CliRunner().invoke(
+            run_command,
+            ["--print-env", "--service", "svc-1"],
+            obj=_remote_ctx(backend),
+            standalone_mode=False,
+        )
+        assert "FOO=bar" in result.output
+        assert "X=y" in result.output
+
+    def test_exec_invokes_relay(self, monkeypatch):
+        from click.testing import CliRunner
+        from cli_anything.railway.core import remote as remote_mod
+        from unittest.mock import MagicMock
+        calls = {}
+        monkeypatch.setattr(remote_mod.railway_relay, "ws_available", lambda: True)
+        monkeypatch.setattr(
+            remote_mod.railway_relay,
+            "exec_command",
+            lambda **kw: calls.update(kw) or 0,
+        )
+        backend = MagicMock()
+        backend._token = "tok"
+        backend.services_list.return_value = [{"id": "svc-1", "name": "web"}]
+        CliRunner().invoke(
+            remote_mod.exec_command,
+            ["--service", "svc-1", "--project", "proj-x", "--env-id", "env-x",
+             "--", "echo", "hi"],
+            obj=_remote_ctx(backend, "proj-x", "env-x"),
+            standalone_mode=False,
+        )
+        assert calls.get("command") == "echo"
+        assert calls.get("args") == ["hi"]
+        assert calls.get("service_id") == "svc-1"
+
+    def test_exec_requires_ws_lib(self, monkeypatch):
+        from click.testing import CliRunner
+        from cli_anything.railway.core import remote as remote_mod
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(remote_mod.railway_relay, "ws_available", lambda: False)
+        backend = MagicMock()
+        result = CliRunner().invoke(
+            remote_mod.exec_command,
+            ["--service", "svc-1", "--project", "p", "--env-id", "e", "--", "ls"],
+            obj=_remote_ctx(backend, "p", "e"),
+            standalone_mode=False,
+        )
+        assert "websocket-client" in (result.output or "").lower()
+
+
+class TestSshKeysCLI:
+    def test_keys_list(self):
+        from click.testing import CliRunner
+        from cli_anything.railway.core.remote import ssh_group
+        from unittest.mock import MagicMock
+        backend = MagicMock()
+        backend.ssh_keys_list.return_value = [{
+            "id": "k1", "name": "macbook", "fingerprint": "SHA256:foo",
+            "createdAt": "2024-01-01T00:00:00",
+        }]
+        result = CliRunner().invoke(
+            ssh_group, ["keys", "list"],
+            obj=_remote_ctx(backend),
+            standalone_mode=False,
+        )
+        assert "macbook" in result.output
+
+    def test_keys_remove_json(self):
+        from click.testing import CliRunner
+        from cli_anything.railway.core.remote import ssh_group
+        from unittest.mock import MagicMock
+        backend = MagicMock()
+        backend.ssh_key_delete.return_value = True
+        result = CliRunner().invoke(
+            ssh_group, ["keys", "remove", "k1", "--json"],
+            obj=_remote_ctx(backend),
+            standalone_mode=False,
+        )
+        assert '"deleted": true' in result.output

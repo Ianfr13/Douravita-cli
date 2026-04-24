@@ -30,6 +30,12 @@ from cli_anything.railway.core.team import team_group
 from cli_anything.railway.core.networking import networking_group
 from cli_anything.railway.core.git import git_group
 from cli_anything.railway.core.platform import platform_group
+from cli_anything.railway.core.remote import (
+    run_command,
+    shell_command,
+    exec_command,
+    ssh_group,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +99,10 @@ main.add_command(team_group)
 main.add_command(networking_group)
 main.add_command(git_group)
 main.add_command(platform_group)
+main.add_command(run_command)
+main.add_command(shell_command)
+main.add_command(exec_command)
+main.add_command(ssh_group)
 
 
 # ---------------------------------------------------------------------------

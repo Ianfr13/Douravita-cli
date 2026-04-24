@@ -90,6 +90,50 @@ cli-anything-railway logs http dep-1 --filter '@httpStatus:>=500' --json
 cli-anything-railway logs environment --env env-1 --service svc-1 --severity error
 ```
 
+### Run / Shell / Exec / SSH (v1.2.0)
+
+**Local execution** (your machine, with the service's env vars injected):
+
+| Command | Description |
+|---------|-------------|
+| `run --project <id> --env-id <id> --service <id> -- <cmd> [args...]` | Run a local command with Railway variables as env |
+| `run --print-env --project <id> --env-id <id> --service <id>` | Dump resolved env without running anything |
+| `shell --project <id> --env-id <id> --service <id>` | Open a subshell (`$SHELL`) with variables available |
+
+**Remote execution** (inside the deployed container, over the WebSocket relay `wss://backboard.railway.com/relay`):
+
+| Command | Description |
+|---------|-------------|
+| `exec --service <id> --project <id> --env-id <id> -- <cmd> [args...]` | One-shot command inside the live container, stream output, exit with remote code |
+| `ssh --service <id> --project <id> --env-id <id>` | Interactive PTY shell (raw mode, forwards resize + stdin) |
+| `ssh --deployment-instance <id> ...` | Target a specific replica |
+
+**SSH keys** (account-level; needs an account/workspace token, not a project-scope token):
+
+| Command | Description |
+|---------|-------------|
+| `ssh keys list` | List registered SSH public keys |
+| `ssh keys add [--key <path>] [--name <label>]` | Register a public key (auto-detects `~/.ssh/*.pub`) |
+| `ssh keys remove <KEY_ID>` | Delete a registered key |
+| `ssh keys github` | List SSH keys from the linked GitHub account |
+
+Examples:
+
+```bash
+# Local run with Railway env
+cli-anything-railway run -p <proj> --env-id <env> -s web -- node scripts/migrate.js
+
+# Local subshell
+cli-anything-railway shell -p <proj> --env-id <env> -s web
+
+# Remote one-shot
+cli-anything-railway exec -s web -p <proj> --env-id <env> -- ls -la /app
+cli-anything-railway exec -s web -p <proj> --env-id <env> -- sh -c "hostname; uname -a"
+
+# Interactive remote shell (requires TTY)
+cli-anything-railway ssh -s web -p <proj> --env-id <env>
+```
+
 ### Domains
 
 | Command | Description |
