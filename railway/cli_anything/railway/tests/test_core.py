@@ -77,6 +77,24 @@ def _make_backend(**overrides):
     backend.build_logs.return_value = [
         {"message": "Build complete", "severity": "INFO", "timestamp": "2024-01-01T00:00:00"}
     ]
+    backend.http_logs.return_value = [
+        {
+            "timestamp": "2024-01-01T00:00:01", "requestId": "r-1", "method": "GET",
+            "path": "/api/users", "host": "example.com", "httpStatus": 200,
+            "totalDuration": 42, "upstreamRqDuration": 30, "rxBytes": 0,
+            "txBytes": 1024, "srcIp": "1.2.3.4", "edgeRegion": "us-east1",
+            "clientUa": "curl/8", "responseDetails": "", "upstreamErrors": "",
+        }
+    ]
+    backend.environment_logs.return_value = [
+        {
+            "message": "env log entry", "severity": "WARN",
+            "timestamp": "2024-01-01T00:00:02",
+            "tags": {"serviceId": "svc-1", "deploymentId": "dep-1"},
+            "attributes": [{"key": "trace", "value": "abc"}],
+        }
+    ]
+    backend._token = "fake-token"
 
     # --- Domains ---
     backend.domains_list.return_value = [
@@ -1627,3 +1645,213 @@ class TestPlatformRegions:
         backend.regions.side_effect = RailwayAPIError("fail")
         result = _invoke(["platform", "regions"], backend=backend)
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# Logs — new flags (filter/severity/since/until/raw/no-color), env & http
+# ---------------------------------------------------------------------------
+
+from cli_anything.railway.core import logs as logs_mod
+
+
+class TestLogsHelpers:
+    def test_parse_time_relative(self):
+        assert logs_mod._parse_time("30m") is not None
+        assert logs_mod._parse_time("2h") is not None
+        assert logs_mod._parse_time("1d") is not None
+
+    def test_parse_time_iso_passthrough(self):
+        iso = "2026-01-01T00:00:00Z"
+        assert logs_mod._parse_time(iso) == iso
+
+    def test_parse_time_none(self):
+        assert logs_mod._parse_time(None) is None
+        assert logs_mod._parse_time("") is None
+
+    def test_compose_filter_both(self):
+        out = logs_mod._compose_filter("foo", "error")
+        assert "foo" in out and "@level:error" in out and " AND " in out
+
+    def test_compose_filter_only_severity(self):
+        assert logs_mod._compose_filter(None, "warn") == "@level:warn"
+
+    def test_compose_filter_none(self):
+        assert logs_mod._compose_filter(None, None) is None
+
+    def test_filter_severity_local(self):
+        entries = [
+            {"severity": "INFO", "message": "a", "timestamp": "t1"},
+            {"severity": "ERROR", "message": "b", "timestamp": "t2"},
+        ]
+        out = logs_mod._filter_severity_local(entries, "error")
+        assert len(out) == 1 and out[0]["message"] == "b"
+
+
+class TestLogsDeploymentNewFlags:
+    def test_filter_forwarded_to_backend(self):
+        backend = _make_backend()
+        result = _invoke(
+            ["logs", "deployment", "dep-1", "--filter", "crash"], backend=backend
+        )
+        assert result.exit_code == 0
+        call = backend.deployment_logs.call_args
+        assert call.kwargs["filter_text"] == "crash"
+
+    def test_severity_composes_filter(self):
+        backend = _make_backend()
+        result = _invoke(
+            ["logs", "deployment", "dep-1", "--severity", "error"], backend=backend
+        )
+        assert result.exit_code == 0
+        call = backend.deployment_logs.call_args
+        assert call.kwargs["filter_text"] == "@level:error"
+
+    def test_filter_and_severity_merge(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "deployment", "dep-1", "--filter", "foo", "--severity", "error"],
+            backend=backend,
+        )
+        call = backend.deployment_logs.call_args
+        merged = call.kwargs["filter_text"]
+        assert "foo" in merged and "@level:error" in merged and "AND" in merged
+
+    def test_since_forwarded(self):
+        backend = _make_backend()
+        _invoke(["logs", "deployment", "dep-1", "--since", "30m"], backend=backend)
+        call = backend.deployment_logs.call_args
+        assert call.kwargs["start_date"] is not None
+
+    def test_raw_output(self):
+        result = _invoke(["logs", "deployment", "dep-1", "--raw"])
+        assert result.exit_code == 0
+        assert "Server started" in result.output
+        assert "[INFO" not in result.output
+
+    def test_no_color(self):
+        # --no-color + raw removes all ANSI; plain text should not include ESC
+        result = _invoke(["logs", "deployment", "dep-1", "--raw", "--no-color"])
+        assert "\x1b[" not in result.output
+
+    def test_build_flag_calls_build_logs(self):
+        backend = _make_backend()
+        _invoke(["logs", "deployment", "dep-1", "--build"], backend=backend)
+        backend.build_logs.assert_called_once()
+        backend.deployment_logs.assert_not_called()
+
+
+class TestLogsHttp:
+    def test_tabular_output(self):
+        result = _invoke(["logs", "http", "dep-1"])
+        assert result.exit_code == 0
+        assert "/api/users" in result.output and "200" in result.output
+
+    def test_json_output(self):
+        result = _invoke(["logs", "http", "dep-1", "--json"])
+        data = json.loads(result.output)
+        assert data[0]["path"] == "/api/users"
+
+    def test_filter_forwarded(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "http", "dep-1", "--filter", "@httpStatus:>=500"], backend=backend
+        )
+        call = backend.http_logs.call_args
+        assert call.kwargs["filter_text"] == "@httpStatus:>=500"
+
+    def test_empty(self):
+        backend = _make_backend()
+        backend.http_logs.return_value = []
+        result = _invoke(["logs", "http", "dep-1"], backend=backend)
+        assert result.exit_code == 0
+        assert "No HTTP log" in result.output
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.http_logs.side_effect = RailwayAPIError("fail")
+        result = _invoke(["logs", "http", "dep-1"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestLogsEnvironment:
+    def test_no_project_required(self):
+        """Regression: --project used to be required and caused API 400."""
+        result = _invoke(
+            ["logs", "environment", "--env", "env-1"],
+        )
+        assert result.exit_code == 0
+        assert "env log entry" in result.output
+
+    def test_service_shortcut_appends_filter(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "environment", "--env", "env-1", "--service", "svc-xyz"],
+            backend=backend,
+        )
+        call = backend.environment_logs.call_args
+        assert "@service:svc-xyz" in (call.kwargs["filter_text"] or "")
+
+    def test_severity_shortcut(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "environment", "--env", "env-1", "--severity", "error"],
+            backend=backend,
+        )
+        call = backend.environment_logs.call_args
+        assert call.kwargs["filter_text"] == "@level:error"
+
+    def test_service_and_severity_merge(self):
+        backend = _make_backend()
+        _invoke(
+            [
+                "logs", "environment", "--env", "env-1",
+                "--service", "svc-1", "--severity", "warn",
+            ],
+            backend=backend,
+        )
+        f = backend.environment_logs.call_args.kwargs["filter_text"]
+        assert "@service:svc-1" in f and "@level:warn" in f and "AND" in f
+
+    def test_since_maps_to_after_date(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "environment", "--env", "env-1", "--since", "1h"], backend=backend
+        )
+        call = backend.environment_logs.call_args
+        assert call.kwargs["after_date"] is not None
+
+    def test_json_output(self):
+        result = _invoke(["logs", "environment", "--env", "env-1", "--json"])
+        data = json.loads(result.output)
+        assert data[0]["severity"] == "WARN"
+
+    def test_before_limit_mapping(self):
+        backend = _make_backend()
+        _invoke(
+            ["logs", "environment", "--env", "env-1", "--lines", "42"], backend=backend
+        )
+        call = backend.environment_logs.call_args
+        assert call.kwargs["before_limit"] == 42
+
+    def test_api_error(self):
+        backend = _make_backend()
+        backend.environment_logs.side_effect = RailwayAPIError("boom")
+        result = _invoke(["logs", "environment", "--env", "env-1"], backend=backend)
+        assert result.exit_code != 0
+
+
+class TestLogsStreamModule:
+    """Sanity tests for the WS streaming helpers (no real network)."""
+
+    def test_ws_available_returns_bool(self):
+        from cli_anything.railway.utils import railway_stream
+        assert isinstance(railway_stream.ws_available(), bool)
+
+    def test_stream_error_raised_when_ws_missing(self, monkeypatch):
+        from cli_anything.railway.utils import railway_stream
+        monkeypatch.setattr(railway_stream, "_WS_AVAILABLE", False)
+        with pytest.raises(railway_stream.StreamError):
+            railway_stream.stream_subscription(
+                token="t", query="q", variables={},
+                result_key="x", on_entry=lambda e: None,
+            )

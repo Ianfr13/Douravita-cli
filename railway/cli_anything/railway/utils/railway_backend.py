@@ -366,33 +366,80 @@ class RailwayBackend:
     # Logs
     # ------------------------------------------------------------------
 
-    def deployment_logs(self, deployment_id: str, limit: int = 100) -> list[dict]:
+    def deployment_logs(
+        self,
+        deployment_id: str,
+        limit: int = 100,
+        filter_text: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict]:
         data = self.query(
             """
-            query GetDeploymentLogs($deploymentId: String!, $limit: Int!) {
-                deploymentLogs(deploymentId: $deploymentId, limit: $limit) {
+            query GetDeploymentLogs(
+                $deploymentId: String!, $limit: Int!,
+                $filter: String, $startDate: DateTime, $endDate: DateTime
+            ) {
+                deploymentLogs(
+                    deploymentId: $deploymentId,
+                    limit: $limit,
+                    filter: $filter,
+                    startDate: $startDate,
+                    endDate: $endDate
+                ) {
                     message
                     severity
                     timestamp
+                    tags { deploymentInstanceId serviceId environmentId projectId }
+                    attributes { key value }
                 }
             }
             """,
-            {"deploymentId": deployment_id, "limit": limit},
+            {
+                "deploymentId": deployment_id,
+                "limit": limit,
+                "filter": filter_text,
+                "startDate": start_date,
+                "endDate": end_date,
+            },
         )
         return data.get("deploymentLogs") or []
 
-    def build_logs(self, deployment_id: str, limit: int = 100) -> list[dict]:
+    def build_logs(
+        self,
+        deployment_id: str,
+        limit: int = 100,
+        filter_text: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict]:
         data = self.query(
             """
-            query GetBuildLogs($deploymentId: String!, $limit: Int!) {
-                buildLogs(deploymentId: $deploymentId, limit: $limit) {
+            query GetBuildLogs(
+                $deploymentId: String!, $limit: Int!,
+                $filter: String, $startDate: DateTime, $endDate: DateTime
+            ) {
+                buildLogs(
+                    deploymentId: $deploymentId,
+                    limit: $limit,
+                    filter: $filter,
+                    startDate: $startDate,
+                    endDate: $endDate
+                ) {
                     message
                     severity
                     timestamp
+                    attributes { key value }
                 }
             }
             """,
-            {"deploymentId": deployment_id, "limit": limit},
+            {
+                "deploymentId": deployment_id,
+                "limit": limit,
+                "filter": filter_text,
+                "startDate": start_date,
+                "endDate": end_date,
+            },
         )
         return data.get("buildLogs") or []
 
@@ -1230,52 +1277,105 @@ class RailwayBackend:
     # Logs — HTTP logs & environment logs
     # ------------------------------------------------------------------
 
-    def http_logs(self, deployment_id: str, limit: int = 100) -> list[dict]:
+    def http_logs(
+        self,
+        deployment_id: str,
+        limit: int = 100,
+        filter_text: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict]:
         data = self.query(
             """
-            query GetHttpLogs($deploymentId: String!, $limit: Int!) {
-                httpLogs(deploymentId: $deploymentId, limit: $limit) {
+            query GetHttpLogs(
+                $deploymentId: String!, $limit: Int!,
+                $filter: String, $startDate: String, $endDate: String
+            ) {
+                httpLogs(
+                    deploymentId: $deploymentId,
+                    limit: $limit,
+                    filter: $filter,
+                    startDate: $startDate,
+                    endDate: $endDate
+                ) {
                     timestamp
                     requestId
                     method
                     path
+                    host
                     httpStatus
                     totalDuration
+                    upstreamRqDuration
+                    rxBytes
+                    txBytes
                     srcIp
+                    edgeRegion
+                    clientUa
+                    responseDetails
+                    upstreamErrors
                 }
             }
             """,
-            {"deploymentId": deployment_id, "limit": limit},
+            {
+                "deploymentId": deployment_id,
+                "limit": limit,
+                "filter": filter_text,
+                "startDate": start_date,
+                "endDate": end_date,
+            },
         )
         return data.get("httpLogs") or []
 
     def environment_logs(
-        self, environment_id: str, project_id: str, limit: int = 100, filter_text: str | None = None
+        self,
+        environment_id: str,
+        filter_text: str | None = None,
+        before_limit: int = 100,
+        before_date: str | None = None,
+        after_date: str | None = None,
+        anchor_date: str | None = None,
+        after_limit: int | None = None,
     ) -> list[dict]:
+        """Fetch env-wide logs via the new schema.
+
+        The Railway API no longer accepts ``projectId`` or ``limit``. Use
+        ``beforeLimit`` (historical window) and/or ``afterLimit`` with
+        ``anchorDate`` for time-anchored windows.
+        """
         variables: dict = {
             "environmentId": environment_id,
-            "projectId": project_id,
-            "limit": limit,
+            "filter": filter_text,
+            "beforeLimit": before_limit,
+            "beforeDate": before_date,
+            "afterDate": after_date,
+            "anchorDate": anchor_date,
+            "afterLimit": after_limit,
         }
-        if filter_text:
-            variables["filter"] = filter_text
-
         data = self.query(
             """
             query GetEnvironmentLogs(
-                $environmentId: String!, $projectId: String!, $limit: Int!,
-                $filter: String
+                $environmentId: String!,
+                $filter: String,
+                $beforeLimit: Int,
+                $beforeDate: String,
+                $afterDate: String,
+                $anchorDate: String,
+                $afterLimit: Int
             ) {
                 environmentLogs(
                     environmentId: $environmentId,
-                    projectId: $projectId,
-                    limit: $limit,
-                    filter: $filter
+                    filter: $filter,
+                    beforeLimit: $beforeLimit,
+                    beforeDate: $beforeDate,
+                    afterDate: $afterDate,
+                    anchorDate: $anchorDate,
+                    afterLimit: $afterLimit
                 ) {
                     message
                     severity
                     timestamp
-                    serviceName
+                    tags { serviceId deploymentId deploymentInstanceId projectId environmentId }
+                    attributes { key value }
                 }
             }
             """,

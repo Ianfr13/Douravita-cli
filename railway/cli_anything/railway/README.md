@@ -59,10 +59,36 @@ All commands accept `--json` for machine-readable output and
 
 ### Logs
 
+All log commands support:
+
+- `--filter "<query>"` — Railway filter syntax (`@level:error AND "failed"`, `@httpStatus:>=500`, `@service:<id>`, etc.). See https://docs.railway.com/reference/logging.
+- `--severity {debug|info|warn|error}` — minimum level (merged into `--filter`).
+- `--since 30m|2h|1d|<ISO>` / `--until ...` — time window (relative or ISO-8601).
+- `--follow` / `-f` — live stream via **WebSocket** (`graphql-transport-ws`). Falls back to polling if `websocket-client` is missing.
+- `--no-color`, `--raw`, `--json` — output formatting.
+
 | Command | Description |
 |---------|-------------|
-| `logs service <ID> --env <ENV_ID> [--lines N]` | Recent service logs |
-| `logs deployment <ID> [--lines N] [--build]` | Deployment or build logs |
+| `logs service <ID> --env <ENV_ID>` | Recent logs for a service (latest deployment) |
+| `logs deployment <ID> [--build]` | Runtime or build logs for a specific deployment |
+| `logs http <ID>` | HTTP request logs with method / path / status / duration |
+| `logs environment --env <ENV_ID> [--service <ID>]` | Logs across every service in an environment (`--service` is a shortcut for `@service:<id>`) |
+
+Examples:
+
+```bash
+# Stream errors from the latest deployment
+cli-anything-railway logs service svc-1 --env env-1 --severity error --follow
+
+# Last 50 log lines from the past hour matching a keyword
+cli-anything-railway logs deployment dep-1 --filter '"timeout"' --since 1h --lines 50
+
+# 5xx HTTP logs, raw
+cli-anything-railway logs http dep-1 --filter '@httpStatus:>=500' --json
+
+# Env-wide errors from a specific service
+cli-anything-railway logs environment --env env-1 --service svc-1 --severity error
+```
 
 ### Domains
 
