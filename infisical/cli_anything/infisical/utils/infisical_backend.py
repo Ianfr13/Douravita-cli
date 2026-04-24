@@ -729,16 +729,25 @@ class InfisicalBackend:
         offset: int = 0,
         limit: int = 100,
         search: str | None = None,
+        order_by: str | None = None,
+        order_direction: str | None = None,
     ) -> list[dict]:
-        data = self.get(
-            "/v2/identities/search",
-            params={
-                "orgId": organization_id,
-                "offset": offset,
-                "limit": limit,
-                "search": search,
-            },
-        )
+        """List identities in an organization (POST /v1/identities/search).
+
+        Infisical expects search as a POST body, not GET query params.
+        ``organization_id`` is also used to scope the call — but since the
+        endpoint doesn't accept it in the body, the token's associated org is
+        used server-side. We still accept the kwarg for API symmetry.
+        """
+        _ = organization_id  # scoping is token-based for this endpoint
+        body: dict = {"offset": offset, "limit": limit}
+        if search is not None:
+            body["search"] = {"name": {"$contains": search}}
+        if order_by is not None:
+            body["orderBy"] = order_by
+        if order_direction is not None:
+            body["orderDirection"] = order_direction
+        data = self.post("/v1/identities/search", json=body)
         return data.get("identities", data)
 
     def get_identity(self, identity_id: str) -> dict:
@@ -861,23 +870,38 @@ class InfisicalBackend:
 
     def export_audit_logs(
         self,
-        organization_id: str,
+        organization_id: str | None = None,
         project_id: str | None = None,
+        environment: str | None = None,
         event_type: str | None = None,
         actor: str | None = None,
+        actor_type: str | None = None,
         user_agent_type: str | None = None,
+        secret_path: str | None = None,
+        secret_key: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         offset: int = 0,
         limit: int = 20,
     ) -> list[dict]:
+        """Export org-wide audit logs.
+
+        Infisical's endpoint is ``GET /v1/organization/audit-logs`` — the org
+        is inferred from the token, so ``organization_id`` is accepted only for
+        API symmetry with other calls.
+        """
+        _ = organization_id
         data = self.get(
-            f"/v1/organization/{organization_id}/audit-logs",
+            "/v1/organization/audit-logs",
             params={
                 "projectId": project_id,
+                "environment": environment,
                 "eventType": event_type,
                 "actor": actor,
+                "actorType": actor_type,
                 "userAgentType": user_agent_type,
+                "secretPath": secret_path,
+                "secretKey": secret_key,
                 "startDate": start_date,
                 "endDate": end_date,
                 "offset": offset,

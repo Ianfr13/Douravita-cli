@@ -949,4 +949,5 @@ class TestBackendExtensions:
         b._session.get = MagicMock(return_value=_mock_response({"auditLogs": []}))
         b.export_audit_logs("org-1", limit=50)
         url = b._session.get.call_args.args[0]
-        assert "/organization/org-1/audit-logs" in url
+        # Org is token-scoped on Infisical's side; path has no {id} segment.
+        assert url.endswith("/organization/audit-logs")
