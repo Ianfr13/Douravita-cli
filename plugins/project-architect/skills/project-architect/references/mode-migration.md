@@ -26,9 +26,9 @@ Se não existir, adicione seguindo `references/devcontainer-templates.md`. Se ex
 
 Se não configurado, guie o usuário seguindo `references/infisical-setup.md`.
 
-## Passo 7 — CLIs e Skills
+## Passo 7 — Recomendar automações
 
-Com base no que o projeto já faz, proponha e confirme antes de instalar.
+Com base no inventário do Deep Scan, use o recommender (`references/automation-recommender.md`) para propor CLIs, skills, subagents e hooks sob medida — descoberta dinâmica via `registry.json` vivo + aitmpl.com, não lista fixa. Confirme quais instalar antes de rodar. Salve em `setup-recommendations.md`.
 
 ## Passo 8 — Mapa de migração
 

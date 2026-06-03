@@ -12,7 +12,7 @@ Setup completo de projetos do zero ao fim. 6 modos de operacao:
 
 | Modo | O que faz |
 |------|-----------|
-| **INSTALL** | Maquina nova sem nada — instala Docker, VS Code, Git, Node, Claude Code, Infisical |
+| **INSTALL** | Maquina nova sem nada — instala Docker, VS Code, Git, Node, Claude Code, Infisical, Agent Vault |
 | **BUILD** | Projeto novo — devcontainer, Infisical, GitHub, CLAUDE.md, CONTEXT.md, skills |
 | **FORK** | Adapta repo externo para o workflow Douravita |
 | **MIGRATION** | Projeto existente sem estrutura — adiciona layers |
@@ -20,10 +20,12 @@ Setup completo de projetos do zero ao fim. 6 modos de operacao:
 | **AUDIT** | Diagnostica problemas — 8 erros de estrutura + libs desatualizadas |
 
 **Features:**
-- Deep Scan spec-driven com subagentes isolados (14 categorias: API contracts, data stores, auth, regras de negocio, etc.)
+- Deep Scan spec-driven via **Workflow (ultracode)** — um scanner-agent por area funcional, em paralelo, com output estruturado + relatorio `.md` por area (15 categorias: API contracts, data stores, auth, regras de negocio, seguranca, etc.)
+- **Automation recommender dinamico** — sem catalogo fixo: recomenda CLIs, skills, subagents, hooks e MCP a partir dos sinais do scan, descobrindo via `registry.json` vivo + aitmpl.com (`npx claude-code-templates`) + GitHub. Pergunta antes de instalar.
+- **Secrets via Agent Vault** — proxy de credenciais (Infisical) que entrega secrets aos agentes sem expo-los; instala se faltar
 - Context7 integrado (MCP + CLI `npx ctx7`) para validar libs e patterns
-- Hook que forca uso de subagentes no scan
-- Output com TODO checklist executavel
+- Hook que forca o scan via Workflow antes de leitura direta da codebase
+- Output com TODO checklist + `setup-recommendations.md` executaveis
 
 **Instalar:**
 
@@ -103,11 +105,12 @@ Douravita-cli/
 │       │   └── hooks.json
 │       └── skills/
 │           └── project-architect/
-│               ├── SKILL.md     # Core (208 linhas)
+│               ├── SKILL.md     # Core
 │               ├── agents/
 │               │   └── scanner.md
 │               ├── scripts/
-│               │   └── enforce-deep-scan.sh
+│               │   ├── deep-scan.workflow.js   # Workflow ultracode do Deep Scan
+│               │   └── enforce-deep-scan.sh    # Hook: forca o scan via Workflow
 │               └── references/
 │                   ├── mode-*.md
 │                   ├── install-guide.md

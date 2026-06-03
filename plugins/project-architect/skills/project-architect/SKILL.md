@@ -78,31 +78,56 @@ Se ambíguo, pergunte.
 
 ---
 
-## Deep Scan — Leitura Completa via Subagentes
+## Deep Scan — Leitura Completa via Workflow
 
 **OBRIGATÓRIO em todo modo com código existente (AUDIT, UPDATE, FORK, MIGRATION).**
 
-Subagentes leem a codebase em paralelo, cada um com contexto limpo e dedicado. O resultado é um inventário spec-driven completo.
+A codebase é escaneada por um **Workflow** (ultracode): um scanner-agent por área funcional, em paralelo, cada um com contexto isolado. Cada agente retorna um inventário **estruturado** e grava o relatório completo em `/tmp/project-scan/[area].md`. O resultado é uma spec completa do projeto, sem estourar o contexto principal.
 
-**Você DEVE usar a tool Agent para spawnar subagentes. NÃO leia os arquivos do projeto você mesmo.**
+**NÃO leia os arquivos de fonte do projeto você mesmo.** Sua leitura direta está bloqueada por hook até o scan rodar — é de propósito. Você consome o output do Workflow, não a codebase crua. (Os scanner-agents, por serem sub-agentes, leem livremente.)
 
 ### Execução
 
-**1.** Ativar flag: `mkdir -p /tmp/project-scan && touch /tmp/.require-deep-scan`
+**1. Ativar o gate** — grave a raiz do projeto no flag (o hook usa isso para saber o que proteger):
 
-**2.** Mapear: `find . -type d -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' -maxdepth 3 | sort`
+```
+mkdir -p /tmp/project-scan && pwd > /tmp/.require-deep-scan
+```
 
-**3.** Spawnar subagentes em paralelo (tool Agent, uma chamada por área funcional):
+**2. Mapear as áreas funcionais** — liste os diretórios e agrupe em áreas (uma por scanner):
 
-> Leia as instruções do scanner em `agents/scanner.md` (no mesmo diretório desta skill). Escaneie `[path]` do projeto em `[project_root]`. Salve em `/tmp/project-scan/[nome].md`. Extraia: contratos de API, shapes de data stores, auth model, regras de negócio, error handling, tipos compartilhados, jobs agendados.
+```
+find . -type d -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/.venv/*' -not -path '*/__pycache__/*' -maxdepth 3 | sort
+```
 
-**4.** Verificar: `ls -la /tmp/project-scan/` — se vazio, reexecute 3.
+Cada área = um diretório de fonte coeso (ex: `workers/`, `dashboard/src/`, `cli/`). Em monorepo, uma área por pacote/serviço. Mantenha de 1 a ~12 áreas — não crie uma por subpasta trivial.
 
-**5.** Ler todos os `/tmp/project-scan/*.md`.
+**3. Rodar o Workflow de Deep Scan** — sinalize o início e invoque a tool **Workflow** apontando para o script bundled desta skill:
 
-**6.** Prosseguir com o modo ativo.
+```
+touch /tmp/project-scan/.scanning
+Workflow({
+  scriptPath: "[skill_dir]/scripts/deep-scan.workflow.js",
+  args: {
+    skill_dir:    "[skill_dir]",
+    project_root: "[raiz absoluta do projeto]",
+    areas: [
+      { name: "workers",   path: "[raiz]/workers" },
+      { name: "dashboard", path: "[raiz]/dashboard/src" }
+    ]
+  }
+})
+```
 
-**Limpeza:** `rm -rf /tmp/project-scan/ && rm -f /tmp/.require-deep-scan`
+`[skill_dir]` é o diretório base desta skill (informado na invocação — é onde está este SKILL.md). O Workflow roda os scanners em paralelo, retorna `{ areas: [...estruturado por área...], md_paths, total_files, areas_dropped }` e grava os `.md`.
+
+**4. Conferir** — se `areas_dropped` não estiver vazio, reexecute o Workflow só para essas áreas. Confirme os artefatos: `ls -la /tmp/project-scan/`.
+
+**5. Consumir o inventário** — use o retorno estruturado como índice e **leia os `/tmp/project-scan/*.md`** para o detalhe verbatim (schemas, contratos, types). A partir daqui o gate libera sua leitura.
+
+**6. Prosseguir** com o modo ativo (diagnóstico, proposta, deliverables).
+
+**Limpeza** (ao fim do modo): `rm -rf /tmp/project-scan/ && rm -f /tmp/.require-deep-scan`
 
 ---
 
@@ -119,6 +144,22 @@ Subagentes leem a codebase em paralelo, cada um com contexto limpo e dedicado. O
 4. **No BUILD** — escolher libs com patterns corretos desde o início
 
 **Limite:** 3 consultas por lib.
+
+---
+
+## Recomendar Automações
+
+**Após o Deep Scan (ou, no BUILD/FORK, a partir das respostas do usuário sobre o projeto).** Ver `references/automation-recommender.md`.
+
+A partir dos sinais do projeto, recomende automações sob medida nas **5 formas de extensão** do Claude Code — **CLIs, Skills, Subagents, Hooks, MCP servers** — **sem catálogo fixo**:
+
+- **CLIs Douravita** → leia o `registry.json` vivo: `curl -fsSL https://raw.githubusercontent.com/Ianfr13/Douravita-cli/main/registry.json`
+- **Agents/Skills/Commands/Hooks/MCPs** → descubra no `aitmpl.com` / `npx claude-code-templates@latest --agent|--skill|--hook|--mcp <nome> --yes` + GitHub
+- **Libs do stack** → Context7
+- **Postura CLI-first:** recomende MCP só quando não houver CLI equivalente
+- **Regra:** as listas são sementes — descubra na hora a tool específica do stack, não recomende de memória
+
+Deliverable: **`setup-recommendations.md`** (1-2 por categoria, com *por que* citando o achado do scan + comando de install). **Pergunte ao usuário quais instalar antes de rodar qualquer coisa.**
 
 ---
 
@@ -151,7 +192,7 @@ Subagentes leem a codebase em paralelo, cada um com contexto limpo e dedicado. O
 
 - Runtime: [Node 22, Python 3.12]
 - Deploy: [Railway, CF Workers, nenhum]
-- Secrets: Infisical (sec.douravita.com.br)
+- Secrets: Infisical via Agent Vault (sec.douravita.com.br)
 
 ## CLIs disponíveis neste projeto
 
@@ -215,9 +256,9 @@ Entre cada skill, `/clear` para contexto limpo.
 
 1. **Atualize CLAUDE.md e TODOS os CONTEXT.md** — esse é o seu deliverable principal. Escreva o conteúdo real, não só descreva o que mudar. **Atualize o `Last updated: [YYYY-MM-DD]` de cada CONTEXT.md que editar** — use a data de hoje. Se um CONTEXT.md não tem `Last updated:`, adicione logo abaixo do título.
 2. **Salve o TODO checklist em `TODO.md` na raiz do projeto** — bugs de código, schemas, tipos, segurança vão aqui como TODOs para o developer. Você não edita código. Se o arquivo já existir, substitua o conteúdo. O TODO é o handoff para a próxima sessão — se não estiver em arquivo, o developer perde.
-3. **Salve as sugestões de skills em `skill-suggestions.md` na raiz do projeto** — se o modo gerou sugestões (Parte 4), salve em arquivo separado. O developer usa isso como input para `/skill-creator`. Se não há sugestões, não crie o arquivo.
-4. **Execute o checklist de verificação** — rode comandos de infra (devcontainer, git, infisical).
-5. **Dê o próximo passo** — uma ação concreta. Ex: "CONTEXT.md atualizados. TODO.md e skill-suggestions.md salvos. Próximo: abra uma sessão nova e execute os TODOs de código."
+3. **Salve as recomendações de automação em `setup-recommendations.md` na raiz do projeto** — se o modo gerou recomendações (CLIs, skills, subagents, hooks, MCP), salve em arquivo separado (ver `references/automation-recommender.md`). É o handoff acionável: cada item traz o comando de install pronto. Se não há recomendações, não crie o arquivo.
+4. **Execute o checklist de verificação** — rode comandos de infra (devcontainer, git, Infisical/Agent Vault).
+5. **Dê o próximo passo** — uma ação concreta. Ex: "CONTEXT.md atualizados. TODO.md e setup-recommendations.md salvos. Próximo: abra uma sessão nova e execute os TODOs de código."
 
 ### Deliverables — Arquivos que você CRIA ou ATUALIZA
 
@@ -226,8 +267,8 @@ Entre cada skill, `/clear` para contexto limpo.
 | `CLAUDE.md` | Sempre | Routing table, workspaces, stack |
 | `*/CONTEXT.md` | Sempre | Estado real de cada workspace |
 | `TODO.md` | Sempre (exceto BUILD sem código existente) | Checklist de correções priorizadas |
-| `skill-suggestions.md` | AUDIT e MIGRATION sempre. UPDATE se aplicável | Sugestões acionáveis via `/skill-creator` |
+| `setup-recommendations.md` | AUDIT e MIGRATION sempre. UPDATE se aplicável | Recomendações de automação (CLIs, skills, subagents, hooks, MCP) com comandos de install |
 
 Se você não salvou esses arquivos, o trabalho não está completo.
 
-**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? TODO.md e skill-suggestions.md estão salvos como arquivos? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, o que precisa ser feito e **o que está inseguro**.
+**O sucesso do seu trabalho se mede por:** CLAUDE.md e CONTEXT.md refletem 100% do estado real da codebase? TODO.md e setup-recommendations.md estão salvos como arquivos? Se sim, qualquer dev que abrir o projeto sabe exatamente o que existe, onde está, o que precisa ser feito e **o que está inseguro**.

@@ -4,12 +4,24 @@ Leia todos os arquivos de um diretório de projeto e produza um relatório spec-
 
 Esta skill é genérica. Funciona para qualquer stack (Node, Python, Go, Ruby, etc.). Adapte as categorias ao que encontrar.
 
+## Como você é invocado
+
+Você roda como um agente do **Workflow de Deep Scan** (`scripts/deep-scan.workflow.js`) — um por área funcional, em paralelo, com contexto isolado. O agente principal usa seu resultado para diagnosticar **sem reler os arquivos** — então capture tudo.
+
 ## Input
 
 Você recebe no prompt:
 - `directory`: caminho do diretório a escanear
 - `project_root`: raiz do projeto (para contexto de imports/exports)
-- `output_path`: onde salvar o relatório (.md)
+- `area`: nome curto da área (usado no nome do arquivo de saída)
+- `output_path`: onde salvar o relatório (.md) — ex: `/tmp/project-scan/[area].md`
+
+## Dois outputs — você entrega OS DOIS
+
+1. **Artefato `.md`** — o relatório spec-driven completo (categorias A–O abaixo), salvo em `output_path`. É o handoff durável: outro dev (ou outra sessão) lê só este arquivo e entende o sistema.
+2. **Objeto estruturado** — um resumo validado conforme o **schema fornecido pelo Workflow** (campos: `area`, `summary`, `file_count`, `stack`, `api_contracts`, `data_stores`, `auth_model`, `business_rules`, `error_handling`, `scheduled_jobs`, `shared_types`, `tests`, `connections`, `problems`, `security_findings`, `md_path`). Os arrays são um **índice conciso** (top items, com `file:line`); o detalhe verbatim (schemas, contratos, types) vive no `.md`. Defina `md_path` para o arquivo que você gravou.
+
+O `.md` é a fonte de verdade completa; o estruturado é o índice navegável. Não entregue só um.
 
 ## Processo
 
@@ -34,9 +46,9 @@ Para arquivos grandes (>300 linhas): leia completo mas foque nos trechos com ló
 
 Para cada categoria abaixo, extraia o que encontrar. Se uma categoria não se aplica ao diretório, pule. O objetivo é que qualquer developer consiga entender o sistema lendo só este relatório.
 
-### 4. Salvar relatório
+### 4. Entregar os dois outputs
 
-Escreva o relatório em markdown no `output_path`.
+Escreva o relatório completo em markdown no `output_path` **e** retorne o objeto estruturado conforme o schema do Workflow. Os dois são obrigatórios.
 
 ---
 
