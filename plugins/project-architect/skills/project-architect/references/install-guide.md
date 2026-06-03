@@ -16,6 +16,7 @@ Setup completo para usar o workflow Douravita. Cobre macOS e Windows.
 | **Claude Code** | Agente AI |
 | **Claude Code auth** | OAuth login (via `claude` CLI) |
 | **2 variáveis de ambiente** | INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET |
+| **Agent Vault** | Proxy de credenciais (Infisical) — agentes nunca tocam nos secrets |
 
 ---
 
@@ -231,6 +232,18 @@ Quando o usuário criar seu primeiro projeto no Infisical, a identity precisa te
 
 Isso é feito depois, no modo BUILD, quando o projeto é criado. Aqui no INSTALL, só criamos a identity.
 
+#### 10. Agent Vault
+
+O proxy de credenciais (Infisical) que entrega os secrets aos agentes sem expô-los. Instale (macOS Intel + Apple Silicon):
+
+```bash
+command -v agent-vault >/dev/null 2>&1 \
+  && echo "OK: agent-vault já instalado" \
+  || curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://get.agent-vault.dev | sh
+```
+
+Verificar: `agent-vault --version`. A configuração do vault (backed by Infisical) e o uso por projeto ficam em `references/infisical-setup.md`.
+
 ---
 
 ## Windows
@@ -349,7 +362,16 @@ sudo apt-get update && sudo apt-get install -y infisical
 #### 9. Configurar Infisical + variáveis de ambiente
 
 Mesmo fluxo do macOS (passos 9.1 a 9.7 acima). No WSL, o `SHELL_RC` vai apontar para `~/.bashrc` automaticamente pelo script do passo 9.5.
+
+#### 10. Agent Vault (no WSL)
+
+```bash
+command -v agent-vault >/dev/null 2>&1 \
+  && echo "OK: agent-vault já instalado" \
+  || curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://get.agent-vault.dev | sh
 ```
+
+Verificar: `agent-vault --version`. Configuração do vault por projeto em `references/infisical-setup.md`.
 
 ---
 
@@ -366,6 +388,7 @@ echo -n "VS Code: " && code --version >/dev/null 2>&1 && echo "OK" || echo "FALH
 echo -n "gh: " && gh auth status >/dev/null 2>&1 && echo "OK (logado)" || echo "FALHOU — rode 'gh auth login'"
 echo -n "Node: " && node --version 2>/dev/null || echo "FALHOU"
 echo -n "Claude Code: " && claude --version 2>/dev/null || echo "FALHOU"
+echo -n "Agent Vault: " && agent-vault --version 2>/dev/null || echo "FALTA — curl ... get.agent-vault.dev | sh"
 
 echo ""
 echo "=== Variáveis Infisical ==="

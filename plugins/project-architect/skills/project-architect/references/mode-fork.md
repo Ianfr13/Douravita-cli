@@ -1,10 +1,9 @@
 # FORK — Adaptando Repo Externo
 
-**Pré-voo:** leia os 4 arquivos de referência antes de responder:
+**Pré-voo:** leia os arquivos de referência antes de responder:
 - `references/devcontainer-templates.md`
-- `references/cli-catalog.md`
 - `references/infisical-setup.md`
-- `references/skills-catalog.md`
+- `references/automation-recommender.md`
 
 ## Passo 1 — Fork e clone
 
@@ -32,8 +31,8 @@ Execute o Deep Scan (seção da SKILL.md) para entender o repo existente antes d
 
 Apresente ao usuário antes de gerar qualquer coisa:
 - Workspaces propostos (adaptados à estrutura existente — não force boundaries que cortam código relacionado)
-- CLIs e skills a instalar
-- MCPs a migrar (se houver)
+- Automações a instalar (CLIs, skills, subagents, hooks — via recommender)
+- MCPs a migrar para CLI (se houver)
 - O que **não** será tocado (código existente, configs do projeto original)
 
 **Regra de ouro:** adicione novos arquivos, nunca sobrescreva existentes. Se já existe um `CLAUDE.md`, leia-o, combine o conteúdo e reescreva com confirmação do usuário. Não delete código, pastas ou configs do projeto original.
@@ -44,12 +43,12 @@ Aguarde confirmação explícita antes de prosseguir.
 
 Após confirmação, execute os Passos 3-5 do BUILD (ver `references/mode-build.md`) adaptando ao repo existente. A estrutura se encaixa no código que existe, não o contrário.
 
-## Passo 5 — Migrar MCPs para CLIs
+## Passo 5 — Migrar MCPs para CLIs (CLI-first)
 
-Se foram detectados MCP servers, substitua pelo CLI equivalente:
+Se foram detectados MCP servers, prefira o CLI equivalente (postura CLI-first do recommender):
 - Remova a configuração de MCP do `CLAUDE.md` ou `settings.json`
-- Adicione o CLI correspondente no Dockerfile (se não estiver no base)
-- Consulte `references/cli-catalog.md` seção "Migração de MCP para CLI"
+- **Descubra** o CLI correspondente no `registry.json` vivo ou no aitmpl.com e adicione no Dockerfile (se não estiver no base)
+- Ver `references/automation-recommender.md` (postura CLI-first). Mantenha o MCP só se não houver CLI equivalente.
 
 ## Passo 6 — Commit e sincronização futura
 

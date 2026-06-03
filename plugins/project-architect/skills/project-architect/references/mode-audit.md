@@ -196,9 +196,9 @@ Cada TODO deve ser específico para executar sem reler o diagnóstico.
 
 Se o AUDIT encontrar CONTEXT.md muito desatualizado (Erro 5 com mais de 5 itens faltando), gere também um **rascunho do CONTEXT.md corrigido** como proposta.
 
-### Parte 4 — Sugestões de skills (OBRIGATÓRIO no AUDIT)
+### Parte 4 — Recomendações de automação (OBRIGATÓRIO no AUDIT)
 
-Baseado no scan completo, sugira skills que fariam diferença neste projeto. Leia `references/skill-suggestions.md` para o formato e critérios. Cada sugestão deve ser acionável via `/skill-creator`. No AUDIT, esta parte nunca é opcional — o scan completo dá visibilidade para identificar gaps que skills resolvem.
+Baseado no scan completo, recomende automações que fariam diferença neste projeto — CLIs, skills, subagents, hooks e (só se não houver CLI) MCP. Use `references/automation-recommender.md` para o formato, critérios e descoberta dinâmica (registry vivo + aitmpl.com). No AUDIT, esta parte nunca é opcional — o scan completo dá visibilidade para identificar gaps que automações resolvem. Pergunte quais instalar antes de rodar.
 
 ---
 
@@ -207,6 +207,6 @@ Baseado no scan completo, sugira skills que fariam diferença neste projeto. Lei
 Após gerar as 4 partes, salve em arquivos na raiz do projeto:
 
 1. **`TODO.md`** — conteúdo da Parte 3 (TODO checklist). Se já existir, substitua.
-2. **`skill-suggestions.md`** — conteúdo da Parte 4 (sugestões de skills). Se já existir, substitua.
+2. **`setup-recommendations.md`** — conteúdo da Parte 4 (recomendações de automação). Se já existir, substitua.
 
 O output no chat é efêmero — se não salvar em arquivo, o developer perde o handoff. Confirme ao usuário que os arquivos foram salvos.

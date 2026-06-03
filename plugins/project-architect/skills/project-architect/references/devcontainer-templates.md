@@ -123,7 +123,7 @@ FROM ghcr.io/ianfr13/douravita-base:latest
 # RUN npm install -g playwright && playwright install --with-deps chromium
 ```
 
-**Como usar:** descomente apenas os CLIs que o projeto precisa. Consulte `cli-catalog.md` para saber qual usar.
+**Como usar:** descomente apenas os CLIs que o projeto precisa. Consulte `automation-recommender.md` (descoberta via `registry.json` vivo) para saber qual usar.
 
 ---
 

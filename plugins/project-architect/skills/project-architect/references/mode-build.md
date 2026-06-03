@@ -1,10 +1,9 @@
 # BUILD — Projeto Novo do Zero
 
-**Pré-voo:** antes de responder qualquer coisa ao usuário, leia os 4 arquivos de referência:
+**Pré-voo:** antes de responder qualquer coisa ao usuário, leia os arquivos de referência:
 - `references/devcontainer-templates.md`
-- `references/cli-catalog.md`
 - `references/infisical-setup.md`
-- `references/skills-catalog.md`
+- `references/automation-recommender.md`
 
 ## Passo 1 — Entender o projeto
 
@@ -21,9 +20,7 @@ Faça estas perguntas ao usuário e aguarde as respostas antes de prosseguir:
 
 Com base nas respostas, prepare uma proposta e apresente ao usuário para confirmação antes de gerar qualquer arquivo:
 
-**CLIs:** com base no `cli-catalog.md`, liste quais instalar além do base. Justifique brevemente cada um.
-
-**Skills:** com base no `skills-catalog.md`, liste quais instalar em `.claude/skills/`. Para cada skill, diga quando o usuário vai usá-la neste projeto. Organize em **pares de workflow** (research → execução) seguindo o "Padrão de Workflow com Skills". Se uma skill de research não existe, marque para criar com `skill-creator`.
+**Automações (CLIs, skills, subagents, hooks):** use o recommender dinâmico (`references/automation-recommender.md`). A partir das respostas do Passo 1, **descubra** o que instalar — CLIs no `registry.json` vivo, agents/skills/hooks no aitmpl.com — em vez de uma lista fixa. Justifique cada um pelo sinal do projeto. Organize as skills em **pares de workflow** (research → execução) seguindo o "Padrão de Workflow com Skills"; se uma skill não existe, marque para criar com `skill-creator`. **Pergunte quais instalar antes de rodar qualquer coisa.**
 
 **Workspaces:** aplique o **teste de modo mental** — se você não mudaria de marcha mental entre duas tarefas, elas ficam no mesmo workspace. Sinal útil: se você quiseria que o Claude "esquecesse" o que estava fazendo — isso é um boundary de workspace. Comece com 2-3 workspaces. Quando em dúvida, junte — é sempre mais fácil dividir depois do que fundir.
 

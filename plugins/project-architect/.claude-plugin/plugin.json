@@ -1,7 +1,7 @@
 {
   "name": "project-architect",
-  "description": "Configura projetos do zero ao fim — devcontainer, Infisical, GitHub, CLAUDE.md, CONTEXT.md, skills, CLIs. Audita e corrige estruturas existentes. Deep Scan spec-driven com subagentes isolados.",
-  "version": "2.0.0",
+  "description": "Configura projetos do zero ao fim — devcontainer, Infisical via Agent Vault, GitHub, CLAUDE.md, CONTEXT.md, e recommender dinâmico de automações (CLIs, skills, subagents, hooks, MCP). Audita e corrige estruturas existentes. Deep Scan spec-driven via Workflow (ultracode) com scanner-agents isolados.",
+  "version": "2.2.0",
   "author": {
     "name": "Ian Francio",
     "email": "ian@douravita.com.br"

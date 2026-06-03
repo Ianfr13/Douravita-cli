@@ -1,14 +1,25 @@
-# Infisical Setup — Por Projeto
+# Secrets — Infisical via Agent Vault
 
-Cada projeto Douravita tem seu próprio projeto no Infisical. Siga este guia ao configurar um projeto novo.
+A Douravita guarda secrets no **Infisical self-hosted** (`https://sec.douravita.com.br`) e os entrega aos agentes via **Agent Vault** — o proxy de credenciais da Infisical. O agente **nunca recebe o secret**: ele faz a chamada normal (ex: para `api.stripe.com`) e o Agent Vault, um proxy HTTPS transparente, anexa a credencial real na saída. Mesmo sob prompt injection, não há secret no contexto para vazar.
 
-**Infisical self-hosted:** `https://sec.douravita.com.br`
+```
+Agente ──HTTPS_PROXY──▶ Agent Vault ──injeta credencial──▶ API externa
+                            │
+                            └── credential store: Infisical (sec.douravita.com.br)
+```
+
+## Modelo de duas camadas
+
+| Camada | Papel |
+|--------|-------|
+| **Infisical** (`sec.douravita.com.br`) | Onde os secrets ficam guardados — store por projeto/ambiente |
+| **Agent Vault** | Proxy que brokera o acesso — o agente roteia tudo por ele e nunca toca no secret |
 
 ---
 
-## Pré-requisito — Variáveis locais no host
+## Pré-requisito — credenciais locais no host
 
-Antes de abrir qualquer devcontainer, estas 3 variáveis precisam estar no `~/.zshrc` ou `~/.bashrc` da **máquina local** (não do container):
+Estas variáveis precisam estar no `~/.zshrc`/`~/.bashrc` da **máquina local** (são a machine identity que o Agent Vault usa para autenticar no Infisical como credential store):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -16,49 +27,85 @@ export INFISICAL_CLIENT_ID=...
 export INFISICAL_CLIENT_SECRET=...
 ```
 
-O devcontainer lê elas via `${localEnv:...}` e passa para dentro. Sem elas, o container abre mas nenhum secret carrega.
+---
+
+## Passo 1 — Projeto + machine identity no Infisical
+
+1. Acesse `https://sec.douravita.com.br` e crie um projeto com o nome do repositório
+2. Copie o **Project ID** (na URL ou nas configurações)
+3. Configure os secrets no ambiente `dev` (e `prod` se aplicável)
+4. A machine identity (Organization Settings → Access Control → Machine Identities) fornece o `INFISICAL_CLIENT_ID`/`SECRET` e precisa ter acesso ao projeto
 
 ---
 
-## Passo 1 — Criar o projeto no Infisical
+## Passo 2 — Instalar o Agent Vault (se não tiver)
 
-1. Acesse `https://sec.douravita.com.br`
-2. Crie um novo projeto com o nome do repositório
-3. Copie o **Project ID** (aparece na URL ou nas configurações do projeto)
-4. Configure os secrets no ambiente `dev` (e `prod` se aplicável)
+Detecte e instale só se faltar:
 
----
-
-## Passo 2 — Atualizar o devcontainer
-
-Substitua `YOUR_PROJECT_ID` no `postStartCommand` do `devcontainer.json`:
-
-```json
-"postStartCommand": "infisical run --projectId=SEU_PROJECT_ID_AQUI --env=dev --domain=https://sec.douravita.com.br/api -- sh -c 'env | grep -v INFISICAL > /home/node/.infisical.env' && echo 'source /home/node/.infisical.env' >> /home/node/.zshrc && echo 'Secrets carregados'"
+```bash
+command -v agent-vault >/dev/null 2>&1 \
+  && echo "OK: agent-vault já instalado ($(agent-vault --version 2>/dev/null))" \
+  || curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://get.agent-vault.dev | sh
 ```
 
+Suporta macOS (Intel + Apple Silicon) e Linux (x86_64 + ARM64). No Windows, instale dentro do **WSL**. Alternativa em container: imagem `infisical/agent-vault` (portas `14321` API / `14322` proxy).
+
 ---
 
-## Passo 3 — Garantir as credenciais locais
+## Passo 3 — Subir o servidor e criar o vault (backed by Infisical)
 
-O devcontainer lê `INFISICAL_CLIENT_ID` e `INFISICAL_CLIENT_SECRET` do ambiente local via:
-
-```json
-"INFISICAL_CLIENT_ID": "${localEnv:INFISICAL_CLIENT_ID}",
-"INFISICAL_CLIENT_SECRET": "${localEnv:INFISICAL_CLIENT_SECRET}"
+```bash
+# servidor — uma vez por máquina/container
+export AGENT_VAULT_MASTER_PASSWORD=<senha-forte>
+agent-vault server -d                 # daemon: 14321 (API) / 14322 (proxy)
 ```
 
-Essas vars precisam estar no `~/.zshrc` ou `~/.bashrc` da máquina host. Se não estiverem, o container vai abrir mas os secrets não vão carregar.
+Crie um vault **apoiado no Infisical** (em vez do store local encriptado), apontando para o Infisical da Douravita:
+
+```bash
+export INFISICAL_URL=https://sec.douravita.com.br
+agent-vault vault create <nome-do-projeto> --credential-store=infisical
+```
+
+O fluxo exato de mapear os secrets do projeto Infisical → serviços/hosts está em `https://docs.agent-vault.dev` (Installation / Tutorial).
 
 ---
 
-## Como o carregamento funciona
+## Passo 4 — Rodar o agente através do proxy
 
-Quando o container inicia, o `postStartCommand`:
-1. Chama `infisical run` com as credenciais de machine identity
-2. Captura todas as variáveis de ambiente — exceto as de autenticação do Infisical (`^INFISICAL_CLIENT*`) — em `/home/node/.infisical.env`
-3. Adiciona `source /home/node/.infisical.env` ao `.zshrc` do container (idempotente — não duplica se o container reiniciar)
-4. A partir daí, qualquer terminal novo no container tem os secrets disponíveis como variáveis de ambiente
+Em vez de chamar `claude` direto, rode por baixo do Agent Vault — ele bootstrapa `HTTPS_PROXY`/`HTTP_PROXY`, `AGENT_VAULT_TOKEN`, CA-trust e os env vars abaixo:
+
+```bash
+agent-vault run -- claude
+```
+
+No código, use **placeholders** em vez de secrets reais — o Agent Vault substitui na saída:
+
+```bash
+ANTHROPIC_API_KEY=__anthropic_api_key__   # dummy; trocado pela credencial real no proxy
+```
+
+Variáveis que o Agent Vault define no ambiente do agente:
+
+| Var | O que é |
+|-----|---------|
+| `AGENT_VAULT_ADDR` | URL do servidor (ex: `http://127.0.0.1:14321`) |
+| `AGENT_VAULT_TOKEN` | token do agente (mintado pelo `agent-vault run`) |
+| `AGENT_VAULT_VAULT` | nome do vault em uso |
+
+As skills `agent-vault-cli` e `agent-vault-http` ensinam o agente a operar o vault (discover, proposals, audit log).
+
+---
+
+## Carregamento de env no devcontainer (não-sensível / legado)
+
+Para variáveis **não sensíveis** (ou setups que ainda não migraram para o Agent Vault), o devcontainer pode carregar env via `infisical run` no `postStartCommand`:
+
+```json
+"postStartCommand": "infisical run --projectId=SEU_PROJECT_ID --env=dev --domain=https://sec.douravita.com.br/api -- sh -c 'env | grep -v INFISICAL > /home/node/.infisical.env' && echo 'source /home/node/.infisical.env' >> /home/node/.zshrc && echo 'Secrets carregados'"
+```
+
+> **Regra:** credenciais sensíveis usadas por agentes (API keys de LLM, tokens de pagamento, PATs) devem ir pelo **Agent Vault**, não pro ambiente. O `infisical run` é para config não sensível e contextos sem agente. As credenciais locais (`INFISICAL_CLIENT_ID`/`SECRET`) chegam ao container via `${localEnv:...}` no `devcontainer.json` — sem elas, nem o `infisical run` nem o vault backed-by-Infisical carregam.
 
 ---
 
@@ -73,20 +120,17 @@ Use `SCREAMING_SNAKE_CASE`. Prefixe por serviço quando relevante:
 | `DATABASE_URL` | `DATABASE_URL` |
 | `WEBHOOK_SECRET` | `WEBHOOK_SECRET` |
 
-Evite nomes genéricos como `API_KEY` ou `SECRET` — colide entre projetos se alguém rodar dois containers.
+Evite nomes genéricos como `API_KEY` ou `SECRET` — colidem entre projetos.
 
 ---
 
 ## Verificar se está funcionando
 
-Dentro do container, após abrir um terminal:
-
 ```bash
-# Deve mostrar o valor do secret
-echo $NOME_DO_SEU_SECRET
-
-# Lista todos os secrets carregados
-cat /home/node/.infisical.env
+command -v agent-vault && agent-vault --version          # binário instalado
+# dentro de um `agent-vault run -- ...`:
+[ -n "$AGENT_VAULT_TOKEN" ] && echo "OK: token presente" || echo "FALTA: AGENT_VAULT_TOKEN"
+agent-vault vault discover --json                        # hosts com credencial configurada
 ```
 
-Se vazio: verifique se `INFISICAL_CLIENT_ID` e `INFISICAL_CLIENT_SECRET` estão no host, e se o `projectId` no devcontainer está correto.
+Se falhar: confirme o servidor (`agent-vault server`), o `AGENT_VAULT_MASTER_PASSWORD`, e que o vault está backed pelo Infisical (`INFISICAL_URL` + machine identity com acesso ao projeto).

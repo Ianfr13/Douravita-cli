@@ -12,8 +12,8 @@
     {
       "name": "project-architect",
       "source": "./plugins/project-architect",
-      "description": "Setup completo de projetos — 6 modos (INSTALL, BUILD, FORK, MIGRATION, UPDATE, AUDIT). Deep Scan spec-driven com subagentes, Context7, hooks.",
-      "version": "2.0.0"
+      "description": "Setup completo de projetos — 6 modos (INSTALL, BUILD, FORK, MIGRATION, UPDATE, AUDIT). Deep Scan via Workflow (ultracode), recommender dinâmico de automações, Infisical via Agent Vault, Context7, hooks.",
+      "version": "2.2.0"
     }
   ]
 }
